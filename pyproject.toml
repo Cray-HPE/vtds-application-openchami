@@ -62,7 +62,7 @@ style = [
     'pycodestyle~=2.11',
 ]
 lint = [
-    'pylint~=3.3',
+    'pylint~=3.2',
 ]
 test = [
     'pytest~=8.3.3',
