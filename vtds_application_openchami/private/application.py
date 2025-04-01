@@ -51,6 +51,9 @@ class Application(ApplicationAPI):
         self.build_dir = build_dir
         self.prepared = False
 
+    def consolidate(self):
+        return
+
     def prepare(self):
         self.prepared = True
         print("Preparing vtds-application-openchami")
