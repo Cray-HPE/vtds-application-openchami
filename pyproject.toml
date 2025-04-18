@@ -22,7 +22,7 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 [project]
-name = 'vtds-application-openchami'
+name = 'vtds_application_openchami'
 authors = [
     { name = 'Eric Lund', email = 'eric.lund@hpe.com' },
 ]
