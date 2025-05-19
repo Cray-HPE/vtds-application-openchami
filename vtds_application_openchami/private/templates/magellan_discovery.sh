@@ -1,3 +1,6 @@
+#! /usr/sbin/sh
+
+set -eu -o pipefail
 export emulator_username=root
 export emulator_password=root_password
 export PATH=$PATH:/

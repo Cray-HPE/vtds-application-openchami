@@ -1,0 +1,4 @@
+FROM ghcr.io/openchami/magellan:latest 
+
+COPY ./magellan_discovery.sh /
+
