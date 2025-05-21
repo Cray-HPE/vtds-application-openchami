@@ -1,11 +1,13 @@
 #! /usr/sbin/sh
 
 set -eu -o pipefail
-export emulator_username=root
-export emulator_password=root_password
+export emulator_username={{ emulator_username }}
+export emulator_password={{ emulator_password }}
 export PATH=$PATH:/
 export MASTER_KEY=$(magellan secrets generatekey)
-magellan scan --subnet 172.25.0.0/24
+{% for network in discovery_networks %}
+magellan scan --subnet {{ network.cidr }}
+{% endfor %}
 magellan list
 cd /tmp/nobody/magellan
 magellan list | awk '{print $1}' | xargs -I{} magellan secrets store {} $emulator_username:$emulator_password

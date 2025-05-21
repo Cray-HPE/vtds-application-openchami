@@ -6,13 +6,13 @@ dnf -y install docker-ce docker-ce-cli containerd.io git || true
 systemctl start docker
 systemctl enable docker
 if ! grep 'foobar.openchami.cluster' /etc/hosts; then
-    echo "10.1.1.10" foobar.openchami.cluster >> /etc/hosts
+    echo "${OCHAMI_HOST_IP}" foobar.openchami.cluster >> /etc/hosts
 fi
 rm -rf /root/deployment-recipes
 git clone https://github.com/OpenCHAMI/deployment-recipes.git /root/deployment-recipes
 cd /root/deployment-recipes/quickstart
 ./generate-configs.sh -f
-sed -i -e 's/LOCAL_IP=.*$/LOCAL_IP=10.1.1.10/' .env
+sed -i -e "s/LOCAL_IP=.*$/LOCAL_IP=${OCHAMI_HOST_IP}/" .env
 cat <<EOF > computes.yml
 services:
   rf-x0c0s1b0:
@@ -70,11 +70,13 @@ services:
 EOF
 cat <<EOF > internal_network_fix.yml
 networks:
-  internal:
+{% for network in dicovery_networks %}
+  {{ network.name }}:
     ipam:
       driver: default
       config:
-        - subnet: 172.25.0.0/24
+        - subnet: {{ network.cidr }}
+{% endfor %}
 EOF
 cat <<EOF > magellan-discovery.yml
 services:
