@@ -1,4 +1,26 @@
 #! /usr/bin/bash
+#
+# MIT License
+#
+# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
 set -e -o pipefail
 
 # The following templated code is set up by the Application layer
@@ -26,7 +48,7 @@ find_host_ip_by_mac() {
     mac="${1}"; shift || fail "find_host_by_mac requires a MAC adddress"
 
     ip -j a | \
-        jq ".[] | (select(.address == \"$mac\")) \
+        jq -r ".[] | (select(.address == \"$mac\")) \
                 | .addr_info \
                 | .[] | (select(.family == \"inet\")) \
                 | .local"
@@ -53,9 +75,7 @@ fi
 
 # This is a host node, so set up OpenCHAMI and get it running and
 # initialized
-OCHAMI_HOST_IP="$(find_host_ip_by_instance "${NODE_INSTANCE}")"
-export OCHAMI_HOST_IP=${HOST_IPS[${NODE_INSTANCE}]
-./OpenCHAMI-Prepare.sh
+./OpenCHAMI-Prepare.sh "$(find_host_ip_by_instance "${NODE_INSTANCE}")" 
 while ! ./OpenCHAMI-Deploy.sh; do
     ./OpenCHAMI-Remove.sh
 done

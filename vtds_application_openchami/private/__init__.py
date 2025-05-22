@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright [2024] Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -87,6 +87,13 @@ DEPLOY_FILES = [
         home('OpenCHAMI-Remove.sh'),
         '755',
         'OpenCHAMI_Remove_script',
+        False,
+    ),
+    (
+        template('OpenCHAMI-Logs.sh'),
+        home('OpenCHAMI-Logs.sh'),
+        '755',
+        'OpenCHAMI_Logs_script',
         False,
     ),
     (

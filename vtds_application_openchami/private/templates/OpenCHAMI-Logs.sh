@@ -42,5 +42,5 @@ docker compose \
        -f configurator.yml \
        -f computes.yml \
        -f magellan_discovery.yml \
-       down --volumes || \
-    fail "removing OpenCHAMI deployment failed"
+       logs || \
+    fail "displaying docker compose logs failed"
