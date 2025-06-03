@@ -22,4 +22,35 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 application:
-  nodes: {}
+  # The host block identifies the Virtual Network on which OpenCHAMI is
+  # hosted and the Virtual Node class whose instances will run
+  # OpenCHAMI. Deployment will be done to all nodes in that class (for a
+  # single instance of OpenCHAMI the cluster configuration should
+  # specify only one instance of the host node class.
+  host:
+    # The Virtual Network (named in the Cluster layer configuration) on
+    # which OpenCHAMI will be hosted.
+    network: hostnet
+    # The node class (named in the Cluster layer configuration) on which
+    # OpenCHAMI will be deployed and run.
+    node_class: host_node
+  # The discovery_networks map is a collection of network specifications
+  # for networks on which OpenCHAMI (currently Magellan) may do
+  # discovery of RedFish endpoints. A discovery network may be either a
+  # Cluster Network, identified by a network name from the Cluster layer
+  # configuration, or an internal network, with no network name but an
+  # explicit network CIDR. Either a network CIDR or a network name must
+  # be supplied. If both or neither is supplied this is an error. If a
+  # given cluster does not contain the network named in a Cluster
+  # Network, that network will be removed from the set of discovery
+  # networks prior to deployment.
+  #
+  # All of the valid networks specified here will be used for discovery
+  # of RedFish endpoints when OpenCHAMI is deployed.
+  discovery_networks:
+    internal:
+      network_cidr: 172.25.0.0/24
+      network_name: null
+    hardware_management:
+      network_cidr: null
+      network_name: hardware_management
