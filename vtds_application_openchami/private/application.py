@@ -262,7 +262,8 @@ class Application(ApplicationAPI):
                 "cannot deploy an unprepared application, call prepare() first"
             )
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
-        with virtual_nodes.ssh_connect_nodes(['host_node']) as connections:
+        host_node_class = self.config.get('host', {}).get('node_class')
+        with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
             self.__deploy_files(connections, DEPLOY_FILES)
 
     def remove(self):
