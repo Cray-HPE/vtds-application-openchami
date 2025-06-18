@@ -178,6 +178,7 @@ class Application(ApplicationAPI):
                         if network['network_name'] is not None else
                         network['network_cidr']
                     ),
+                    'external': network['network_name'] is not None,
                     'name': name,
                 }
                 for name, network in discovery_networks.items()
@@ -207,10 +208,6 @@ class Application(ApplicationAPI):
                 )
             )
             with NamedTemporaryFile() as tmpfile:
-                # ERIC TAKE THIS OUT ONCE vtds-base VSHA-651 IS MERGED AND
-                # TAGGED
-                #
-                # pylint: disable=too-many-function-args
                 render_template_file(source, template_data, tmpfile.name)
                 connections.copy_to(
                     tmpfile.name, dest,

@@ -36,4 +36,9 @@ magellan list | awk '{print $1}' | xargs -I{} magellan secrets store {} $emulato
 magellan secrets list
 magellan secrets list | awk '{print $1}' | sed -e 's/:$//' | xargs -I{} magellan secrets retrieve {}
 export ACCESS_TOKEN=$(curl -s -X GET http://opaal:3333/token | sed 's/.*"access_token":"\([^"]*\).*/\1/')
-magellan collect --host http://smd:27779 --access-token "$ACCESS_TOKEN"
+magellan collect -v --format yaml --output-file nodes.yaml
+magellan send --format yaml -d @nodes.yaml http://smd:27779 --access-token "$ACCESS_TOKEN"
+# The following is helpful for debugging. It keeps the container
+# running so you can drop into it. The container uses very little
+# in the way of resources, so it is not bad to keep around.
+while true; do sleep 600; done
