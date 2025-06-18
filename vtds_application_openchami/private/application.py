@@ -178,6 +178,7 @@ class Application(ApplicationAPI):
                         if network['network_name'] is not None else
                         network['network_cidr']
                     ),
+                    'external': network['network_name'] is not None,
                     'name': name,
                 }
                 for name, network in discovery_networks.items()
@@ -207,10 +208,6 @@ class Application(ApplicationAPI):
                 )
             )
             with NamedTemporaryFile() as tmpfile:
-                # ERIC TAKE THIS OUT ONCE vtds-base VSHA-651 IS MERGED AND
-                # TAGGED
-                #
-                # pylint: disable=too-many-function-args
                 render_template_file(source, template_data, tmpfile.name)
                 connections.copy_to(
                     tmpfile.name, dest,
@@ -262,7 +259,8 @@ class Application(ApplicationAPI):
                 "cannot deploy an unprepared application, call prepare() first"
             )
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
-        with virtual_nodes.ssh_connect_nodes(['host_node']) as connections:
+        host_node_class = self.config.get('host', {}).get('node_class')
+        with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
             self.__deploy_files(connections, DEPLOY_FILES)
 
     def remove(self):

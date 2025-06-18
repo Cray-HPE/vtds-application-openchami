@@ -210,9 +210,9 @@ gcloud compute --project hpe-openchami-tilly-3724 ssh --tunnel-throug-iap root@h
 
 Third you need to log into the Virtual Node from the Virtual Blade
 using SSH. Again, if you did not change the Cluster Layer
-configuration, then that Virtual Node is named `ochami-001`:
+configuration, then that Virtual Node is named `management-001`:
 ```
-ssh ochami-001
+ssh management-001
 ```
 
 You are now on the your OpenCHAMI node with OpenCHAMI running locally.

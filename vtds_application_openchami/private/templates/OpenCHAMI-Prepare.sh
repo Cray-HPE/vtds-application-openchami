@@ -96,11 +96,13 @@ internal_network_fix() {
 cat <<EOF
 networks:
 {% for network in discovery_networks %}
+{% if not network.external %}
   {{ network.name }}:
     ipam:
       driver: default
       config:
         - subnet: {{ network.cidr }}
+{% endif %}
 {% endfor %}
 EOF
 }
@@ -119,7 +121,11 @@ services:
       opaal:
         condition: service_healthy
     networks:
-      - internal
+{% for network in discovery_networks %}
+{% if not network.external %}
+    - {{ network.name }}
+{% endif %}
+{% endfor %}
     entrypoint:
       - /magellan_discovery.sh
 EOF
