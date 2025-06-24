@@ -52,8 +52,9 @@ def home(filename):
     return path_join(separator, "root", filename)
 
 
-# source, dest, mode, tag, run
-DEPLOY_FILES = [
+# Templated files to be deployed to the managment node: (source, dest,
+# mode, tag, run)
+MANAGEMENT_NODE_FILES = [
     (
         template('magellan_discovery_dockerfile'),
         home('magellan_discovery_dockerfile'),
@@ -108,6 +109,31 @@ DEPLOY_FILES = [
         home('prepare_node.sh'),
         '755',
         'node_prepare_script',
+        True,
+    ),
+]
+
+# Templated files to be deployed to and run on the Virtual Blades
+BLADE_FILES = [
+    (
+        template('sushy-emulator.conf'),
+        home('sushy-emulator.conf'),
+        '644',
+        'sushy-emulator-configuration',
+        False
+    ),
+    (
+        template('sushy-emulator.service'),
+        home('sushy-emulator.service'),
+        '644',
+        'sushy-emulator-unit-file',
+        False
+    ),
+    (
+        template('prepare_blade.sh'),
+        home('prepare_blade.sh'),
+        '700',
+        'blade_prepare_script',
         True,
     ),
 ]
