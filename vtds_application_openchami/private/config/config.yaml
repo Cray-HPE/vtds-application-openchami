@@ -51,6 +51,19 @@ application:
     internal:
       network_cidr: 172.25.0.0/24
       network_name: null
+      # Username and password used by RIE for redfish emulation. This is a
+      # short term fix until we are able to configure RIE endpoints more
+      # precisely. The password is not really a secret because it does not
+      # grant actual access to anything of interest.
+      redfish_username: root
+      redfish_password: root_password
     hardware_management:
       network_cidr: null
       network_name: hardware_management
+      # Username and password used by RedFish on the Virtual Blades. The
+      # password here grants access to the Virtual Nodes of the cluster,
+      # so it is a bit more sensitive. It is generated and stuffed into
+      # the configuration automatically if it is null. Override it at your
+      # own risk if you want a known value.
+      redfish_username: root
+      redfish_password: null
