@@ -24,6 +24,7 @@
 
 """
 from tempfile import NamedTemporaryFile
+from uuid import uuid4
 
 from vtds_base import (
     info_msg,
@@ -31,7 +32,11 @@ from vtds_base import (
     render_template_file,
 )
 from vtds_base.layers.application import ApplicationAPI
-from . import DEPLOY_FILES
+from vtds_base.layers.cluster import NodeSSHConnectionSetBase
+from . import (
+    MANAGEMENT_NODE_FILES,
+    BLADE_FILES
+)
 
 
 class Application(ApplicationAPI):
@@ -133,6 +138,8 @@ class Application(ApplicationAPI):
         for name, network in discovery_networks.items():
             network_name = network.get('network_name', None)
             network_cidr = network.get('network_cidr', None)
+            redfish_username = network.get('redfish_username', None)
+            redfish_password = network.get('redfish_password', None)
             if network_name is None and network_cidr is None:
                 raise ContextualError(
                     "validation error: OpenCHAMI layer configuration "
@@ -145,6 +152,16 @@ class Application(ApplicationAPI):
                     "discovery network '%s' has both a network name "
                     "and a network CIDR specified, only one is allowed "
                     "at a time" % name
+                )
+            if redfish_username is None:
+                raise ContextualError(
+                    "validation error: OpenCHAMI layer configuration "
+                    "discovery network '%s' has no RedFish username" % name
+                )
+            if redfish_password is None:
+                raise ContextualError(
+                    "validation error: OpenCHAMI layer configuration "
+                    "discovery network '%s' has no RedFish password" % name
                 )
 
     def __template_data(self):
@@ -169,8 +186,6 @@ class Application(ApplicationAPI):
             # coding them. For now they are hard coded into RIE so we
             # need match them here.
             'host_node_class': host_node_class,
-            'emulator_username': 'root',
-            'emulator_password': 'root_password',
             'discovery_networks': [
                 {
                     'cidr': (
@@ -180,6 +195,8 @@ class Application(ApplicationAPI):
                     ),
                     'external': network['network_name'] is not None,
                     'name': name,
+                    'redfish_username': network['redfish_username'],
+                    'redfish_password': network['redfish_password'],
                 }
                 for name, network in discovery_networks.items()
             ],
@@ -194,7 +211,7 @@ class Application(ApplicationAPI):
         print("template_date = \n%s" % str(template_data))
         return template_data
 
-    def __deploy_files(self, connections, files):
+    def __deploy_files(self, connections, files, target='host-node'):
         """Copy files to the blades or nodes connected in
         'connections' based on the manifest and run the appropriate
         deployment script(s).
@@ -212,7 +229,7 @@ class Application(ApplicationAPI):
                 connections.copy_to(
                     tmpfile.name, dest,
                     recurse=False, logname="upload-application-%s-to-%s" % (
-                        tag, 'host-node'
+                        tag, target
                     )
                 )
             cmd = "chmod %s %s;" % (mode, dest)
@@ -221,8 +238,12 @@ class Application(ApplicationAPI):
             )
             connections.run_command(cmd, "chmod-file-%s-on" % tag)
             if run:
-                cmd = "%s {{ node_class }} {{ instance }}" % dest
-                info_msg("running '%s' on host-node node(s)" % cmd)
+                if isinstance(connections, NodeSSHConnectionSetBase):
+                    cmd = "%s {{ node_class }} {{ instance }}" % dest
+                    info_msg("running '%s' on host-node node(s)" % cmd)
+                else:
+                    cmd = "%s {{ blade_class }} {{ instance }}" % dest
+                    info_msg("running '%s' on host-blade(s)" % cmd)
                 connections.run_command(cmd, "run-%s-on" % tag)
 
     def consolidate(self):
@@ -237,6 +258,14 @@ class Application(ApplicationAPI):
             if network.get('network_name', None) is None or
             network['network_name'] in available_networks
         }
+        # Before handing the filtered discovery networks back, for any
+        # that has a None redfish_password setting, conjur a password
+        # for it...
+        for _, network in discovery_networks.items():
+            password = network.get('redfish_password', None)
+            network['redfish_password'] = (
+                password if password is not None else str(uuid4())
+            )
         self.config['discovery_networks'] = filtered_discovery_networks
 
     def prepare(self):
@@ -258,10 +287,13 @@ class Application(ApplicationAPI):
             raise ContextualError(
                 "cannot deploy an unprepared application, call prepare() first"
             )
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        with virtual_blades.ssh_connect_blades() as connections:
+            self.__deploy_files(connections, BLADE_FILES, 'host-blade')
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
         host_node_class = self.config.get('host', {}).get('node_class')
         with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
-            self.__deploy_files(connections, DEPLOY_FILES)
+            self.__deploy_files(connections, MANAGEMENT_NODE_FILES)
 
     def remove(self):
         if not self.prepared:

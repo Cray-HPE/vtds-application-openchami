@@ -1,0 +1,15 @@
+[Unit]
+Description=Sushy RedFish Emulator for vTDS
+After=syslog.target network.target
+
+[Service]
+Type=simple
+TimeoutStartSec=5m
+User=root
+WorkingDirectory=/root
+Environment="SUSHY_EMULATOR_LIBVIRT_BY_NAME=true"
+ExecStart=/root/blade-venv/bin/sushy-emulator --config /etc/sushy-emulator/config
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
