@@ -23,23 +23,36 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 set -eu -o pipefail
-export PATH=$PATH:/
+export PATH="$PATH":/
 mkdir -p /tmp/nobody/magellan
 cd /tmp/nobody/magellan
-export MASTER_KEY=$(magellan secrets generatekey)
-echo MASTER_KEY > /tmp/nobody/magellan/master_key # Keep it around for debug
-export ACCESS_TOKEN=$(curl -s -X GET http://opaal:3333/token | sed 's/.*"access_token":"\([^"]*\).*/\1/')
+export MASTER_KEY="$(magellan secrets generatekey)"
+echo "${MASTER_KEY}" > /tmp/nobody/magellan/master_key # Keep it around for debug
+export ACCESS_TOKEN="$(curl -s -X GET http://opaal:3333/token | sed 's/.*"access_token":"\([^"]*\).*/\1/')"
+         
+# Keep track of the servers we have seen so we can avoid overwriting secrets
+#
+# NOTE: this method is does not scale well. It works okay for vTDS
+#       systems which won't be likely to have more than 4 or so
+#       servers. We really need a way to have magellan list only
+#       servers that are on a specific network (CIDR) if we are going
+#       to use it this way.
+rm -f rf_servers
+touch rf_servers
 {% for network in discovery_networks %}
 magellan scan --subnet {{ network.cidr }}
-# XXX - This is the right place to do this, but it breaks everything
-#       right now because it arbitrarily overwrites already stored
-#       credentials on subsequent networks. Fix the logic here, then
-#       enable it again for all networks. For now, do it at the end
-#       and only for the internal network.
-{% if not network.external %}
-magellan list | awk '{print $1}' | xargs -I{} magellan secrets store {} {{ network.redfish_username }}:{{ network.redfish_password }}
-{% endif %}
-# XXX - End
+servers="$(magellan list | awk '{print $1}')"
+creds="{{ network.redfish_username }}:{{ network.redfish_password }}"
+for server in ${servers}; do
+    if grep -F "${server}" rf_servers; then
+        # Skip servers we have already seen
+        continue
+    fi
+    # New server, store its creds
+    magellan secrets store "${server}" "${creds}"
+    # Remember we saw this one.
+    echo "${server}" >> rf_servers
+done
 {% endfor %}
 magellan secrets list | awk '{print $1}' | sed -e 's/:$//' | xargs -I{} magellan secrets retrieve {}
 magellan collect -v --format yaml --output-file nodes.yaml
