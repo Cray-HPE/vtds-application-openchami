@@ -116,6 +116,13 @@ MANAGEMENT_NODE_FILES = [
 # Templated files to be deployed to and run on the Virtual Blades
 BLADE_FILES = [
     (
+        template('nginx-default-site-config'),
+        home('nginx-default-site-config'),
+        '644',
+        'nginx-default-site-config',
+        False
+    ),
+    (
         template('sushy-emulator.conf'),
         home('sushy-emulator.conf'),
         '644',

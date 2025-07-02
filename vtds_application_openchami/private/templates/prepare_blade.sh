@@ -43,6 +43,10 @@ htpasswd -B -b -c /etc/sushy-emulator/users \
 {% endif %}
 {% endfor %}
 
+# Put the nginx HTTPS reverse proxy configuration into
+# the nginx configuration directory
+cp /root/nginx-default-site-config /etc/nginx/sites-available/default
+
 # Put the sushy-emulator config away where it belongs...
 cp /root/sushy-emulator.conf /etc/sushy-emulator/config
 
@@ -51,4 +55,5 @@ cp /root/sushy-emulator.service /etc/systemd/system/sushy-emulator.service
 
 # Start up the sushy-emulator
 systemctl daemon-reload
-systemctl start sushy-emulator
+systemctl enable --now sushy-emulator
+systemctl enable --now nginx
