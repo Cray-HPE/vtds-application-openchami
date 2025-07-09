@@ -176,15 +176,13 @@ class Application(ApplicationAPI):
         host = self.config.get('host', {})
         host_network = host['network']
         host_node_class = host['node_class']
+        rie_services = self.config.get('rie_services', {})
         addressing = virtual_nodes.node_class_addressing(
             host_node_class, host_network
         )
         macs = addressing.addresses('AF_PACKET')
         discovery_networks = self.config.get('discovery_networks', {})
         template_data = {
-            # Find a way to generate and install these instead of hard
-            # coding them. For now they are hard coded into RIE so we
-            # need match them here.
             'host_node_class': host_node_class,
             'discovery_networks': [
                 {
@@ -206,7 +204,8 @@ class Application(ApplicationAPI):
                     'host_mac': macs[instance],
                 }
                 for instance in range(0, len(macs))
-            ]
+            ],
+            'rie_services': rie_services,
         }
         print("template_date = \n%s" % str(template_data))
         return template_data
@@ -267,6 +266,17 @@ class Application(ApplicationAPI):
                 password if password is not None else str(uuid4())
             )
         self.config['discovery_networks'] = filtered_discovery_networks
+
+        # Clean out RIE servers that are marked for deletion and clean
+        # out the 'delete' key value pair from all RIE servers
+        self.config['rie_services'] = {
+            name: {
+                key: value
+                for key, value in service.items() if key != 'delete'
+            }
+            for name, service in self.config.get('rie_services', {}).items()
+            if not service.get('delete', False)
+        }
 
     def prepare(self):
         self.prepared = True

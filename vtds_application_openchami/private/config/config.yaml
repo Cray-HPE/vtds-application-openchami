@@ -67,3 +67,83 @@ application:
       # own risk if you want a known value.
       redfish_username: root
       redfish_password: null
+  # The 'rie_services' section configures the RIE (Redfish Interface
+  # Emulator) instances that will be set up in the OpenCHAMI
+  # deployment. RIE instances provide simulated RedFish endpoints for
+  # discovery and node manipulation. They do not represent any actual
+  # BMCs or Node resources.  They are useful for standalone testing of
+  # OpenCHAMI without the need for actual Compute nodes and so forth.
+  #
+  # The first RIE service configuration is annotated to help with
+  # setting up an RIE service. The rest are left without annotation to
+  # avoid duplication.
+  rie_services:
+    rf-x0c0s1b0:
+      # delete tells vTDS whether or not to delete this RIE service from
+      # the configuration before bringing up RIE services. Set this to
+      # true to remove this RIE service from the OpenCHAMI system
+      delete: false
+      # container_name specifies the name of the container to be be run
+      # to start this RIE service.
+      container_name: rf-x0c0s1b0
+      # hostname provides the hostname on the RIE network of the service
+      hostname: x0c0s1b0
+      # Image specifies the RIE container image to be used to make this
+      # RIE service.
+      image: ghcr.io/openchami/csm-rie:latest
+      # The following environment variables tell RIE what to set up on
+      # this service
+      environment:
+        - MOCKUPFOLDER=EX235a
+        - MAC_SCHEMA=Mountain
+        - XNAME=x0c0s1b0
+        - PORT=443
+      # networks indicates what networks the RIE service will be present
+      # on within the OpenCHAMI cluster and provides the hostname
+      # aliases for this RIE service
+      networks:
+        internal:
+          aliases:
+            - x0c0s1b0
+    rf-x0c0s2b0:
+      delete: false
+      container_name: rf-x0c0s2b0
+      hostname: x0c0s2b0
+      image: ghcr.io/openchami/csm-rie:latest
+      environment:
+        - MOCKUPFOLDER=EX235a
+        - MAC_SCHEMA=Mountain
+        - XNAME=x0c0s2b0
+        - PORT=443
+      networks:
+        internal:
+          aliases:
+            - x0c0s2b0
+    rf-x0c0s3b0:
+      delete: false
+      container_name: rf-x0c0s3b0
+      hostname: x0c0s3b0
+      image: ghcr.io/openchami/csm-rie:latest
+      environment:
+        - MOCKUPFOLDER=EX235a
+        - MAC_SCHEMA=Mountain
+        - XNAME=x0c0s3b0
+        - PORT=443
+      networks:
+        internal:
+          aliases:
+            - x0c0s3b0
+    rf-x0c0s4b0:
+      delete: false
+      container_name: rf-x0c0s4b0
+      hostname: x0c0s4b0
+      image: ghcr.io/openchami/csm-rie:latest
+      environment:
+        - MOCKUPFOLDER=EX235a
+        - MAC_SCHEMA=Mountain
+        - XNAME=x0c0s4b0
+        - PORT=443
+      networks:
+        internal:
+          aliases:
+            - x0c0s4b0
