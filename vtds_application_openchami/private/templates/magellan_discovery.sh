@@ -29,6 +29,7 @@ cd /tmp/nobody/magellan
 export MASTER_KEY="$(magellan secrets generatekey)"
 echo "${MASTER_KEY}" > /tmp/nobody/magellan/master_key # Keep it around for debug
 export ACCESS_TOKEN="$(curl -s -X GET http://opaal:3333/token | sed 's/.*"access_token":"\([^"]*\).*/\1/')"
+cp /bmc-id-map.yaml .
          
 # Keep track of the servers we have seen so we can avoid overwriting secrets
 #
@@ -55,7 +56,7 @@ for server in ${servers}; do
 done
 {% endfor %}
 magellan secrets list | awk '{print $1}' | sed -e 's/:$//' | xargs -I{} magellan secrets retrieve {}
-magellan collect -v --format yaml --output-file nodes.yaml
+magellan collect -v --format yaml --output-file nodes.yaml --bmc-id-map @bmc-id-map.yaml
 magellan send --format yaml -d @nodes.yaml http://smd:27779 --access-token "$ACCESS_TOKEN"
 # The following is helpful for debugging. It keeps the container
 # running so you can drop into it. The container uses very little

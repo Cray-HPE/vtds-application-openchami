@@ -70,10 +70,17 @@ MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
-        template('OpenCHAMI-Deploy.sh'),
-        home('OpenCHAMI-Deploy.sh'),
+        template('OpenCHAMI-Stage1-Deploy.sh'),
+        home('OpenCHAMI-Stage1-Deploy.sh'),
         '755',
-        'OpenCHAMI_Deploy_script',
+        'OpenCHAMI_Stage1_Deploy_script',
+        False,
+    ),
+    (
+        template('OpenCHAMI-Stage2-Deploy.sh'),
+        home('OpenCHAMI-Stage2-Deploy.sh'),
+        '755',
+        'OpenCHAMI_Stage2_Deploy_script',
         False,
     ),
     (
