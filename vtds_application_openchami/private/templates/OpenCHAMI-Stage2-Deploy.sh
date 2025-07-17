@@ -28,7 +28,25 @@ fail() {
     exit 1
 }
 
+bmc_id_map() {
+    echo "map_key: bmc-ip-addr"
+    echo "id_map:"
+    # IP Address to XNAME mappings for Virtual Blades
+    {% for bmc_mapping in bmc_mappings %}
+    echo "    {{ bmc_mapping.ip_addr }}: {{ bmc_mapping.xname }}"
+    {% endfor %}
+    # IP Address to XNAME mappings for RIE containers
+    docker ps --format json | jq -r '.Names | select(test("^rf-x"))' | while read container; do
+        xname="$(docker inspect "${container}" \
+           | jq -r '.[] | .NetworkSettings.Networks.quickstart_internal.Aliases[] | select(test("^x"))')"
+        address="$(docker inspect "${container}" \
+           | jq -r '.[] | .NetworkSettings.Networks.quickstart_internal.IPAddress')"
+        echo "    ${address}: ${xname}"
+    done
+}
+
 cd /root || fail "can't chdir to '/root'"
+bmc_id_map > bmc-id-map.yaml || fail "can't build BMC ID map"
 docker build -t magellan-discovery:latest \
        -f magellan_discovery_dockerfile /root || \
     fail "unable to build magellan discovery docker image"
@@ -47,4 +65,4 @@ docker compose \
        -f computes.yml \
        -f magellan_discovery.yml \
        up -d || \
-    fail "starting OpenCHAMI failed"
+    fail "adding magellan discovery to OpenChami failed"

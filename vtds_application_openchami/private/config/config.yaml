@@ -51,12 +51,15 @@ application:
     internal:
       network_cidr: 172.25.0.0/24
       network_name: null
-      # Username and password used by RIE for redfish emulation. This is a
-      # short term fix until we are able to configure RIE endpoints more
-      # precisely. The password is not really a secret because it does not
-      # grant actual access to anything of interest.
+      # Username and password used by RIE for redfish emulation.  The
+      # password here is not really a secret because it does not grant
+      # actual access to anything of interest.
       redfish_username: root
       redfish_password: root_password
+      # On the internal network, Virtual Blades are meaningless, so no
+      # blade classes are listed here...
+      blade_classes: []
+      
     hardware_management:
       network_cidr: null
       network_name: hardware_management
@@ -67,6 +70,11 @@ application:
       # own risk if you want a known value.
       redfish_username: root
       redfish_password: null
+      # The list of Virtual Blade classes here tells the management node
+      # deployment which blade classes to include in the set of RedFish
+      # endpoints that need mappings to xnames.
+      blade_classes:
+        - host-blade
   # The 'rie_services' section configures the RIE (Redfish Interface
   # Emulator) instances that will be set up in the OpenCHAMI
   # deployment. RIE instances provide simulated RedFish endpoints for

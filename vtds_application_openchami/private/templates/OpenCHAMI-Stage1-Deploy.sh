@@ -1,3 +1,4 @@
+#! /usr/bin/bash
 #
 # MIT License
 #
@@ -20,8 +21,25 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-FROM ghcr.io/openchami/magellan:latest 
+set -e -o pipefail
 
-COPY ./magellan_discovery.sh /
-COPY ./bmc-id-map.yaml /
+fail() {
+    echo $* >&2
+    exit 1
+}
 
+cd /root/deployment-recipes/quickstart || \
+    fail "can't chdir to '/root/deployment-recipes/quickstart'"
+docker compose \
+       -f base.yml \
+       -f internal_network_fix.yml \
+       -f postgres.yml \
+       -f jwt-security.yml \
+       -f haproxy-api-gateway.yml \
+       -f openchami-svcs.yml \
+       -f autocert.yml \
+       -f coredhcp.yml \
+       -f configurator.yml \
+       -f computes.yml \
+       up -d || \
+    fail "starting OpenCHAMI failed"
