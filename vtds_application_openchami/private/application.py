@@ -164,6 +164,23 @@ class Application(ApplicationAPI):
                     "discovery network '%s' has no RedFish password" % name
                 )
 
+    def __bmc_mappings(self):
+        """Return a dictionary of Virtual Blade IP addresses (on any
+        discovery network with Virtual Blades on it) to the respective
+        Virtual Blade xnames.
+
+        """
+#        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
+#        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+#        discovery_networks = self.config.get('discovery_networks', {})
+#        discovery_net_names = {
+#            network['network_name']
+#            for _, network in discovery_networks.items()
+#            if network.get('network_name', None)
+#        }
+#       ERIC!!!
+        return {}
+
     def __template_data(self):
         """Return a dictionary for use in rendering files to be
         shipped to the host node(s) for deployment based on the
@@ -182,6 +199,7 @@ class Application(ApplicationAPI):
         )
         macs = addressing.addresses('AF_PACKET')
         discovery_networks = self.config.get('discovery_networks', {})
+        bmc_mappings = self.__bmc_mappings()
         template_data = {
             'host_node_class': host_node_class,
             'discovery_networks': [
@@ -206,6 +224,7 @@ class Application(ApplicationAPI):
                 for instance in range(0, len(macs))
             ],
             'rie_services': rie_services,
+            'bmc_mappings': bmc_mappings,
         }
         print("template_date = \n%s" % str(template_data))
         return template_data

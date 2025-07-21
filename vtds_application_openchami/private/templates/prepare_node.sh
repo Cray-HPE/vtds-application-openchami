@@ -75,9 +75,10 @@ fi
 
 # This is a host node, so set up OpenCHAMI and get it running and
 # initialized
-./OpenCHAMI-Prepare.sh "$(find_host_ip_by_instance "${NODE_INSTANCE}")" 
-while ! ./OpenCHAMI-Deploy.sh; do
+./OpenCHAMI-Prepare.sh "$(find_host_ip_by_instance "${NODE_INSTANCE}")"
+while ! ./OpenCHAMI-Stage1-Deploy.sh; do
     ./OpenCHAMI-Remove.sh
 done
+./OpenCHAMI-Stage2-Deploy.sh
 # Just to show it worked, dump out the discovered nodes
 ./OpenCHAMI-Show.sh

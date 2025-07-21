@@ -90,6 +90,19 @@ install_docker() {
     dnf -y install docker-ce docker-ce-cli containerd.io git || true
 }
 
+configure_docker() {
+    cat <<EOF > /etc/docker/daemon.json
+{
+    "mtu": 1410,
+    "default-network-opts": {
+        "bridge": {
+            "com.docker.network.driver.mtu": "1410"
+        }
+    }
+}
+EOF
+}
+
 start_docker() {
     systemctl start docker || fail "unable to start docker"
     systemctl enable docker || fail "unable to enable docker"
@@ -124,6 +137,7 @@ set_up_openchami() {
 OCHAMI_HOST_IP="${1}"; shift || usage "no node type specified"
 prepare_package_management
 install_docker
+configure_docker
 start_docker
 update_hosts "${OCHAMI_HOST_IP}"
 set_up_openchami "${OCHAMI_HOST_IP}"
