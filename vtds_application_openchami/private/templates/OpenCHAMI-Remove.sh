@@ -44,3 +44,8 @@ docker compose \
        -f magellan_discovery.yml \
        down --volumes || \
     fail "removing OpenCHAMI deployment failed"
+
+cd /root || \
+    fail "cant chdir to /root"
+
+rm -rf deployment_recipes
