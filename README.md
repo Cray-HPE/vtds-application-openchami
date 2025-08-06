@@ -14,7 +14,7 @@ procedure outlined in the
 [QuickStart Deployment Recipe for OpenCHAMI](https://github.com/OpenCHAMI/deployment-recipes/blob/main/quickstart/README.md).
 
 For an overview of vTDS see the
-[vTDS Core Description](https://github.com/Cray-HPE/vtds-core/blob/VSHA-652/README.md)
+[vTDS Core Description](https://github.com/Cray-HPE/vtds-core/blob/main/README.md)
 
 ## Getting Started with OpenCHAMI On vTDS
 
@@ -37,7 +37,7 @@ a
 ### Prepare Your System to Run vTDS Commands
 
 Follow the instructions in the
-[vTDS Core Getting Started guide](https://github.com/Cray-HPE/vtds-core/blob/VSHA-652/README.md#getting-started-with-vtds)
+[vTDS Core Getting Started guide](https://github.com/Cray-HPE/vtds-core/blob/main/README.md#getting-started-with-vtds)
 to install the required software and create a Python virtual
 environment to work in.
 
@@ -149,7 +149,7 @@ behalf.
 ### Make Sure You Activate Your Python Virtual Environment
 
 Follow the instructions in the [vTDS Core Getting Started
-guide](https://github.com/Cray-HPE/vtds-core/blob/VSHA-652/README.md#python-and-a-virtual-environment)
+guide](https://github.com/Cray-HPE/vtds-core/blob/main/README.md#python-and-a-virtual-environment)
 to activate your vTDS virtual environment. You should have already
 done everything else in that section, so just activating the
 environment should be sufficient.
