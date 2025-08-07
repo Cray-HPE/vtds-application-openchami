@@ -170,16 +170,81 @@ class Application(ApplicationAPI):
         Virtual Blade xnames.
 
         """
-#        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
-#        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
-#        discovery_networks = self.config.get('discovery_networks', {})
-#        discovery_net_names = {
-#            network['network_name']
-#            for _, network in discovery_networks.items()
-#            if network.get('network_name', None)
-#        }
-#       ERIC!!!
-        return {}
+        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        # Get the list of names of discovery networks
+        discovery_net_names = [
+            network['network_name']
+            for _, network in self.config.get('discovery_networks', {}).items()
+            if network.get('network_name', None)
+        ]
+        # Get the xname lists for each of the blade classes defined in
+        # the configuration.
+        blade_class_xnames = {
+            blade_class: virtual_blades.application_metadata(blade_class).get(
+                'xnames', []
+            )
+            for blade_class in virtual_blades.blade_classes()
+        }
+        # Get a blade class to list of Adressing objects map for all
+        # blade classes that have xnames listed for them
+        blade_class_addressing = {
+            blade_class: [
+                virtual_networks.blade_class_addressing(blade_class, net_name)
+                for net_name in discovery_net_names
+            ]
+            for blade_class, xnames in blade_class_xnames.items()
+            if xnames
+        }
+        # Get a blade class name to connected instances set mapping
+        blade_instances = {
+            # Map the blade class to the set of unique instances from
+            # all of the networks on which that blade class has
+            # connected instances. NOTE: this is a set comprehension
+            # not a list comprehension, since there can be multiple
+            # references to a single instance.
+            blade_class: {
+                instance
+                for addressing in blade_class_addressing[blade_class]
+                for instance in addressing.instances()
+            }
+            for blade_class in blade_class_addressing.keys()
+        }
+        # Get the mapping of (blade_class, instance) to xname from the
+        # blade_class_xnames. If there is an instance without a
+        # matching xname (i.e. the list of xnames is too short) skip
+        # it.
+        blade_xnames = {
+            (blade_class, instance): blade_class_xnames[blade_class][instance]
+            for blade_class in blade_class_addressing.keys()
+            for instance in blade_instances[blade_class]
+            if instance < len(blade_class_xnames[blade_class])
+        }
+        # Get the mapping of (blade_class, instance) to list of
+        # addresses from blade_class_addressing. Note that this is all
+        # addresses in all address families on each discovery network,
+        # not just IPv4 addresses.
+        blade_addresses = {
+            (blade_class, instance): [
+                addressing.address(family, instance)
+                for addressing in blade_class_addressing[blade_class]
+                for family in addressing.address_families()
+                # It is possible for addressing.address() to return
+                # None, skip those...
+                if addressing.address(family, instance) is not None
+            ]
+            for (blade_class, instance) in blade_xnames
+        }
+        # Finally, return the address to xname mapping for all of the
+        # blade instances using blade_addresses and blade_xnames
+        return [
+            {
+                'addr': address,
+                'xname': xname,
+            }
+            for (blade_class, instance), xname in blade_xnames.items()
+            for address in blade_addresses[(blade_class, instance)]
+        ]
 
     def __template_data(self):
         """Return a dictionary for use in rendering files to be

@@ -31,9 +31,9 @@ fail() {
 bmc_id_map() {
     echo "map_key: bmc-ip-addr"
     echo "id_map:"
-    # IP Address to XNAME mappings for Virtual Blades
+    # Address to XNAME mappings for Virtual Blades
     {% for bmc_mapping in bmc_mappings %}
-    echo "    {{ bmc_mapping.ip_addr }}: {{ bmc_mapping.xname }}"
+    echo "    {{ bmc_mapping.addr }}: {{ bmc_mapping.xname }}"
     {% endfor %}
     # IP Address to XNAME mappings for RIE containers
     docker ps --format json | jq -r '.Names | select(test("^rf-x"))' | while read container; do
