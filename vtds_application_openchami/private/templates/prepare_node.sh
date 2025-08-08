@@ -67,6 +67,13 @@ find_host_ip_by_instance() {
 NODE_TYPE="${1}"; shift || usage "no node type specified"
 NODE_INSTANCE="${1}"; shift || usage "no node instance number specified"
 
+# DO NOT MERGE THIS!!! THIS IS FOR TUTORIAL INVESTIGATION ONLY
+dnf -y check-update || true
+dnf -y install emacs podman
+useradd rocky
+echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+exit 0
+
 # If this node is not one of the host nodes, there is nothing to do
 if [ "${NODE_TYPE}" != "${HOST_NODE_CLASS}" ]; then
     # Not the OpenCHAMI host node, nothing to do, just succeed
