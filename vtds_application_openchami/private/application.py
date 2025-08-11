@@ -34,10 +34,7 @@ from vtds_base import (
 )
 from vtds_base.layers.application import ApplicationAPI
 from vtds_base.layers.cluster import NodeSSHConnectionSetBase
-from . import (
-    MANAGEMENT_NODE_FILES,
-    BLADE_FILES
-)
+from . import deployment_files
 
 
 class Application(ApplicationAPI):
@@ -60,6 +57,14 @@ class Application(ApplicationAPI):
         self.stack = stack
         self.build_dir = build_dir
         self.prepared = False
+        self.deploy_mode = None
+        self.deployment_files = None
+        self.template_data = None
+        self.template_data_calls = {
+            'quickstart': self.__template_data_quickstart,
+            'quadlet': self.__template_data_quadlet,
+            'bare': self.__template_data_bare,
+        }
 
     def __validate_host_info(self):
         """Run through the 'host' configuration and make sure it is
@@ -313,13 +318,92 @@ class Application(ApplicationAPI):
         }
         return template_data
 
+    @staticmethod
+    def __formatted_str_list(str_list):
+        """Format a friendly string for use with errors that lists
+        strings in a comma separated and quoted with an 'and'
+        form. Example: "'a', 'b' and 'c'"
+
+        """
+        return (
+            "%s, and '%s'" %
+            (
+                ", ".join(
+                    [
+                        "'%s'" % mode
+                        for mode in str_list
+                    ][:-1]
+                ),
+                str_list[-1]
+            )
+            if len(str_list > 1) else '%s' % str_list[0]
+            if str_list else ""
+        )
+
+    def __template_data_quickstart(self):
+        """Construct the template data dictionary used for building
+        templated deployment files for the Quickstart Recipe mode of
+        deployment.
+
+        """
+        return self.__template_data()
+
+    def __template_data_quadlet(self):
+        """Construct the template data dictionary used for building
+        templated deployment files for the Quadlet based mode of
+        deployment.
+
+        """
+        return self.__template_data()
+
+    def __template_data_bare(self):
+        """Construct the template data dictionary used for building
+        templated deployment files for the Bare System mode of
+        deployment.
+
+        """
+        return self.__template_data()
+
+    def __choose_template_data(self):
+        """Pick the appropriate template data for the configured mode of
+        """
+        try:
+            return self.template_data_calls[self.deploy_mode]()
+        except KeyError as err:
+            raise ContextualError(
+                "unrecognized deployment mode '%s' configured - recognized "
+                "modes are: %s" % (
+                    self.deploy_mode,
+                    self.__formatted_str_list(
+                        list(self.template_data.keys())
+                    )
+                )
+            )from err
+
+    def __choose_deployment_files(self):
+        """Based on the configured deployment mode, pick the correct
+        set of blade and management node deployment files.
+
+        """
+        try:
+            return deployment_files[self.deploy_mode]
+        except KeyError as err:
+            raise ContextualError(
+                "unrecognized deployment mode '%s' configured - recognized "
+                "modes are: %s" % (
+                    self.deploy_mode,
+                    self.__formatted_str_list(
+                        list(self.deployment_files.keys())
+                    )
+                )
+            ) from err
+
     def __deploy_files(self, connections, files, target='host-node'):
         """Copy files to the blades or nodes connected in
         'connections' based on the manifest and run the appropriate
         deployment script(s).
 
         """
-        template_data = self.__template_data()
         for source, dest, mode, tag, run in files:
             info_msg(
                 "copying '%s' to host-node node(s) '%s'" % (
@@ -327,7 +411,7 @@ class Application(ApplicationAPI):
                 )
             )
             with NamedTemporaryFile() as tmpfile:
-                render_template_file(source, template_data, tmpfile.name)
+                render_template_file(source, self.template_data, tmpfile.name)
                 connections.copy_to(
                     tmpfile.name, dest,
                     recurse=False, logname="upload-application-%s-to-%s" % (
@@ -349,6 +433,15 @@ class Application(ApplicationAPI):
                 connections.run_command(cmd, "run-%s-on" % tag)
 
     def consolidate(self):
+        # Set up for preparing and shipping deployment files
+        #
+        # Get the deployment mode from the config. Default to 'quickstart'.
+        self.deploy_mode = (
+            self.config.get('deployment', {}).get('mode', 'quickstart')
+        )
+        self.deployment_files = self.__choose_deployment_files()
+        self.template_data = self.__choose_template_data()
+
         # Run through and remove any discovery network whose network
         # name is not defined in the cluster configuration.
         virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
@@ -398,13 +491,14 @@ class Application(ApplicationAPI):
             raise ContextualError(
                 "cannot deploy an unprepared application, call prepare() first"
             )
+        blade_files, management_node_files = self.deployment_files
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
         with virtual_blades.ssh_connect_blades() as connections:
-            self.__deploy_files(connections, BLADE_FILES, 'host-blade')
+            self.__deploy_files(connections, blade_files, 'host-blade')
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
         host_node_class = self.config.get('host', {}).get('node_class')
         with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
-            self.__deploy_files(connections, MANAGEMENT_NODE_FILES)
+            self.__deploy_files(connections, management_node_files)
 
     def remove(self):
         if not self.prepared:

@@ -54,65 +54,87 @@ def home(filename):
 
 # Templated files to be deployed to the managment node: (source, dest,
 # mode, tag, run)
-MANAGEMENT_NODE_FILES = [
+#
+# Management node files for the Quickstart recipe deployment mode
+QUICKSTART_MANAGEMENT_NODE_FILES = [
     (
-        template('magellan_discovery_dockerfile'),
+        template('quickstart/magellan_discovery_dockerfile'),
         home('magellan_discovery_dockerfile'),
         '644',
         'magellan-discovery-dockerfile',
         False
     ),
     (
-        template('magellan_discovery.sh'),
+        template('quickstart/magellan_discovery.sh'),
         home('magellan_discovery.sh'),
         '755',
         'magellan_discovery_script',
         False,
     ),
     (
-        template('OpenCHAMI-Stage1-Deploy.sh'),
+        template('quickstart/OpenCHAMI-Stage1-Deploy.sh'),
         home('OpenCHAMI-Stage1-Deploy.sh'),
         '755',
         'OpenCHAMI_Stage1_Deploy_script',
         False,
     ),
     (
-        template('OpenCHAMI-Stage2-Deploy.sh'),
+        template('quickstart/OpenCHAMI-Stage2-Deploy.sh'),
         home('OpenCHAMI-Stage2-Deploy.sh'),
         '755',
         'OpenCHAMI_Stage2_Deploy_script',
         False,
     ),
     (
-        template('OpenCHAMI-Prepare.sh'),
+        template('quickstart/OpenCHAMI-Prepare.sh'),
         home('OpenCHAMI-Prepare.sh'),
         '755',
         'OpenCHAMI_Prepare_script',
         False,
     ),
     (
-        template('OpenCHAMI-Remove.sh'),
+        template('quickstart/OpenCHAMI-Remove.sh'),
         home('OpenCHAMI-Remove.sh'),
         '755',
         'OpenCHAMI_Remove_script',
         False,
     ),
     (
-        template('OpenCHAMI-Logs.sh'),
+        template('quickstart/OpenCHAMI-Logs.sh'),
         home('OpenCHAMI-Logs.sh'),
         '755',
         'OpenCHAMI_Logs_script',
         False,
     ),
     (
-        template('OpenCHAMI-Show.sh'),
+        template('quickstart/OpenCHAMI-Show.sh'),
         home('OpenCHAMI-Show.sh'),
         '755',
         'OpenCHAMI_Show_script',
         False,
     ),
     (
-        template('prepare_node.sh'),
+        template('quickstart/prepare_node.sh'),
+        home('prepare_node.sh'),
+        '755',
+        'node_prepare_script',
+        True,
+    ),
+]
+# Management node files for the bare system deployment mode
+BARE_MANAGEMENT_NODE_FILES = [
+    (
+        template('bare/prepare_node.sh'),
+        home('prepare_node.sh'),
+        '755',
+        'node_prepare_script',
+        True,
+    ),
+]
+# Management node files for the Quadlet deployment mode
+QUADLET_MANAGEMENT_NODE_FILES = [
+    (
+        template('quadlet/prepare_node.sh'),
         home('prepare_node.sh'),
         '755',
         'node_prepare_script',
@@ -123,31 +145,37 @@ MANAGEMENT_NODE_FILES = [
 # Templated files to be deployed to and run on the Virtual Blades
 BLADE_FILES = [
     (
-        template('nginx-default-site-config'),
+        template('blade/nginx-default-site-config'),
         home('nginx-default-site-config'),
         '644',
         'nginx-default-site-config',
         False
     ),
     (
-        template('sushy-emulator.conf'),
+        template('blade/sushy-emulator.conf'),
         home('sushy-emulator.conf'),
         '644',
         'sushy-emulator-configuration',
         False
     ),
     (
-        template('sushy-emulator.service'),
+        template('blade/sushy-emulator.service'),
         home('sushy-emulator.service'),
         '644',
         'sushy-emulator-unit-file',
         False
     ),
     (
-        template('prepare_blade.sh'),
+        template('blade/prepare_blade.sh'),
         home('prepare_blade.sh'),
         '700',
         'blade_prepare_script',
         True,
     ),
 ]
+
+deployment_files = {
+    'quickstart': (BLADE_FILES, QUICKSTART_MANAGEMENT_NODE_FILES),
+    'bare': (BLADE_FILES, BARE_MANAGEMENT_NODE_FILES),
+    'quadlet': (BLADE_FILES, QUADLET_MANAGEMENT_NODE_FILES),
+}
