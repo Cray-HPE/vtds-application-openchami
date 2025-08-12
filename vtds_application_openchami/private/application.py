@@ -23,6 +23,7 @@
 """Layer implementation module for the openchami application.
 
 """
+from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
@@ -246,7 +247,17 @@ class Application(ApplicationAPI):
             for address in blade_addresses[(blade_class, instance)]
         ]
 
+    @staticmethod
+    def __clean_rie_service(rie_service):
+        """Remove the 'delete' field (if any) from the supplied
+        'rie_service' description and return the result
+        """
+        if 'delete' in rie_service:
+            rie_service.pop('delete')
+        return rie_service
+
     def __template_data(self):
+
         """Return a dictionary for use in rendering files to be
         shipped to the host node(s) for deployment based on the
         Application layer configuration.
@@ -258,7 +269,16 @@ class Application(ApplicationAPI):
         host = self.config.get('host', {})
         host_network = host['network']
         host_node_class = host['node_class']
-        rie_services = self.config.get('rie_services', {})
+        # Remove deleted services and clean out the delete field from
+        # all RIE services so that it doesn't leak into the template
+        # files.
+        rie_services = {
+            rie_name: self.__clean_rie_service(rie_service)
+            for rie_name, rie_service in deepcopy(
+                    self.config.get('rie_services', {})
+            ).items()
+            if not rie_service.get('delete', 'False')
+        }
         addressing = virtual_nodes.node_class_addressing(
             host_node_class, host_network
         )
@@ -291,7 +311,6 @@ class Application(ApplicationAPI):
             'rie_services': rie_services,
             'bmc_mappings': bmc_mappings,
         }
-        print("template_date = \n%s" % str(template_data))
         return template_data
 
     def __deploy_files(self, connections, files, target='host-node'):
@@ -364,7 +383,6 @@ class Application(ApplicationAPI):
 
     def prepare(self):
         self.prepared = True
-        print("Preparing vtds-application-openchami")
 
     def validate(self):
         if not self.prepared:
@@ -372,7 +390,6 @@ class Application(ApplicationAPI):
                 "cannot validate an unprepared application, "
                 "call prepare() first"
             )
-        print("Validating vtds-application-openchami")
         self.__validate_host_info()
         self.__validate_discovery_networks()
 
@@ -394,4 +411,3 @@ class Application(ApplicationAPI):
             raise ContextualError(
                 "cannot deploy an unprepared application, call prepare() first"
             )
-        print("Removing vtds-application-openchami")
