@@ -66,3 +66,9 @@ useradd -g rocky -G libvirt rocky
 # Remove rocky from /etc/sudoers and then put it back with NOPASSWD access
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+# Run OpenCHAMI preparation script as 'rocky'
+cp /root/OpenCHAMI-Prepare.sh ~rocky/OpenCHAMI-Prepare.sh
+chown rocky ~rocky/OpenCHAMI-Prepare.sh
+chmod 755 ~rocky/OpenCHAMI-Prepare.sh
+su - rocky -c "~rocky/OpenCHAMI-Prepare.sh"

@@ -134,6 +134,34 @@ BARE_MANAGEMENT_NODE_FILES = [
 # Management node files for the Quadlet deployment mode
 QUADLET_MANAGEMENT_NODE_FILES = [
     (
+        template('quadlet/minio.container'),
+        home('minio.container'),
+        '644',
+        'minio_quadlet_container_config',
+        False,
+    ),
+    (
+        template('quadlet/registry.container'),
+        home('registry.container'),
+        '644',
+        'registry_quadlet_container_config',
+        False,
+    ),
+    (
+        template('quadlet/coredhcp.yaml'),
+        home('coredhcp.yaml'),
+        '644',
+        'coredhcp_config',
+        False,
+    ),
+    (
+        template('quadlet/OpenCHAMI-Prepare.sh'),
+        home('OpenCHAMI-Prepare.sh'),
+        '755',
+        'open-chami-prepare-script',
+        False,
+    ),
+    (
         template('quadlet/prepare_node.sh'),
         home('prepare_node.sh'),
         '755',

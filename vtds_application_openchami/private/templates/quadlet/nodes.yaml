@@ -1,0 +1,18 @@
+nodes:
+{%- for node in nodes %}
+- name: {%-{ node.name }}
+  nid: {{ node.nid }}
+  xname: {{ node.xname }}
+  bmc_mac: {{ node.bmc_mac }}
+  bmc_ip: {{ node.bmc_ip }}
+  group: {{ node.node_class }}
+  interfaces:
+  {%- for interface in node.interfaces %}
+  - mac_addr: {{ interface.mac_addr }}
+    ip_addrs:
+    {%- for ip_addr in interfaces.ip_addrs %}
+    - name: {{ ip_addr.name }}
+      ip_addr: {{ ip_addr.ip_addr }}
+    {%- endfor }
+  {%- endfor %}
+{%- endfor %}
