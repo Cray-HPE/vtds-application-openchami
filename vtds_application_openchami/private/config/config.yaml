@@ -22,6 +22,31 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 application:
+  # The deployment section specifies which of the available deployment
+  # modes is to be used to deploy OpenCHAMI and any configuration
+  # specific to that deployment mode that might be needed.
+  #
+  # The modes are:
+  #
+  #   'quickstart' - a deployment mode using the Quickstart OpenCHAMI
+  #                  deployment recipe to deploy OpenCHAMI with Magellan
+  #                  and RIE in a Docker compose cluster, potentially
+  #                  with Virtual Compute Nodes.
+  #
+  #   'quadlet'    - a deployment mode that deploys OpenCHAMI into
+  #                  systemd managed podman quadlets loosely based on
+  #                  the OpenCHAMI 2025 Tutorial, but with support for
+  #                  a cluster of Virtual Compute Nodes running directly
+  #                  on Virtual Blade hosts and with support for
+  #                  Magellan discovery of those Virtual Compute Nodes.
+  #
+  #   'bare'       - a deployment that finishes without OpenCHAMI
+  #                  deployed at all, but with a management node
+  #                  deployed that is ready for the 2025 Tutorial to be
+  #                  run on it.
+  deployment:
+    mode: quickstart
+
   # The host block identifies the Virtual Network on which OpenCHAMI is
   # hosted and the Virtual Node class whose instances will run
   # OpenCHAMI. Deployment will be done to all nodes in that class (for a
