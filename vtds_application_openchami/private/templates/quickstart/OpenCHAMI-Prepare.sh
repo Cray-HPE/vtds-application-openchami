@@ -36,22 +36,41 @@ fail() {
 
 computes() {
     cat <<EOF
-services: {{ rie_services }}
+services:
+{%- for name, service in rie_services.items() %}
+  {{ name }}:
+    container_name: {{ service.container_name }}
+    hostname: {{ service.hostname }}
+    image: {{ service.image }}
+    environment:
+    {%- for var in service.environment %}
+    - {{ var }}
+    {%- endfor %}
+    networks:
+    {%- for name, network in service.networks.items() %}
+      {{ name }}:
+        aliases:
+        {%- for alias in network.aliases %}
+          - {{ alias }}
+        {%- endfor %}
+    {%- endfor %}
+{%- endfor %}
+
 EOF
 }
 
 internal_network_fix() {
 cat <<EOF
 networks:
-{% for network in discovery_networks %}
-{% if not network.external %}
+{%- for network in discovery_networks %}
+{%- if not network.external %}
   {{ network.name }}:
     ipam:
       driver: default
       config:
         - subnet: {{ network.cidr }}
-{% endif %}
-{% endfor %}
+{%- endif %}
+{%- endfor %}
 EOF
 }
 
@@ -69,11 +88,11 @@ services:
       opaal:
         condition: service_healthy
     networks:
-{% for network in discovery_networks %}
-{% if not network.external %}
+{%- for network in discovery_networks %}
+{%- if not network.external %}
     - {{ network.name }}
-{% endif %}
-{% endfor %}
+{%- endif %}
+{%- endfor %}
     entrypoint:
       - /magellan_discovery.sh
 EOF
