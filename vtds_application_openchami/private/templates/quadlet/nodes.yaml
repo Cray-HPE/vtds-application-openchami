@@ -1,7 +1,6 @@
-#
 # MIT License
 #
-# (C) Copyright 2024-2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,29 +19,26 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-#
-name: Python (lint)
 
-on: [push]
-
-jobs:
-  lint:
-    name: Lint
-    strategy:
-      matrix:
-        version: ['3.12', '3.11', '3.10', '3.9']
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0 # Also fetch git-tags
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.version }}
-    - name: nox
-      run: |
-        pip install --upgrade pip
-        pip install .[ci]
-        pip install .[lint]
-        nox -e lint
+# Set up the system level pieces needed to start deploying
+# OpenCHAMI. This script is intended to be run by a user with
+# passwordless 'sudo' permissions. The base node preparation script
+# sets up the user 'rocky' with that before chaining here.
+nodes:
+{%- for node in nodes %}
+- name: {%-{ node.name }}
+  nid: {{ node.nid }}
+  xname: {{ node.xname }}
+  bmc_mac: {{ node.bmc_mac }}
+  bmc_ip: {{ node.bmc_ip }}
+  group: {{ node.node_class }}
+  interfaces:
+  {%- for interface in node.interfaces %}
+  - mac_addr: {{ interface.mac_addr }}
+    ip_addrs:
+    {%- for ip_addr in interfaces.ip_addrs %}
+    - name: {{ ip_addr.name }}
+      ip_addr: {{ ip_addr.ip_addr }}
+    {%- endfor }
+  {%- endfor %}
+{%- endfor %}
