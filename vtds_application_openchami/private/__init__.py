@@ -155,6 +155,13 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
+        template('quadlet/nodes.yaml'),
+        home('node.yaml'),
+        '644',
+        'manual_discovery_data',
+        False,
+    ),
+    (
         template('quadlet/OpenCHAMI-Prepare.sh'),
         home('OpenCHAMI-Prepare.sh'),
         '755',
