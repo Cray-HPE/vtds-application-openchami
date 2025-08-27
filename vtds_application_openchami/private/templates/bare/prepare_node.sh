@@ -61,8 +61,12 @@ dnf -y install ${PACKAGES}
 dnf -y install epel-release
 dnf -y install s3cmd
 systemctl enable --now libvirtd
-groupadd rocky
-useradd -g rocky -G libvirt rocky
+if ! getent group rocky; then
+    groupadd rocky
+fi
+if ! getent passwd rocky; then
+    useradd -g rocky -G libvirt rocky
+fi
 # Remove rocky from /etc/sudoers and then put it back with NOPASSWD access
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers

@@ -40,7 +40,9 @@ cp /bmc-id-map.yaml .
 #       to use it this way.
 rm -f rf_servers
 touch rf_servers
-{% for network in discovery_networks %}
+
+{%- for network in discovery_networks %}
+# Scan and store creds for subnet {{ network.cidr }}
 magellan scan --subnet {{ network.cidr }}
 servers="$(magellan list | awk '{print $1}')"
 creds="{{ network.redfish_username }}:{{ network.redfish_password }}"
@@ -55,7 +57,8 @@ for server in ${servers}; do
     echo "${server}" >> rf_servers
 done
 {% endfor %}
-magellan secrets list | awk '{print $1}' | sed -e 's/:$//' | xargs -I{} magellan secrets retrieve {}
+
+# Collect and deliver the node data
 magellan collect -v --format yaml --output-file nodes.yaml --bmc-id-map @bmc-id-map.yaml
 magellan send --format yaml -d @nodes.yaml http://smd:27779 --access-token "$ACCESS_TOKEN"
 # The following is helpful for debugging. It keeps the container
