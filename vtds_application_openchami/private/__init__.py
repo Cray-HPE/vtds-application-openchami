@@ -156,7 +156,7 @@ QUADLET_MANAGEMENT_NODE_FILES = [
     ),
     (
         template('quadlet/nodes.yaml'),
-        home('node.yaml'),
+        home('nodes.yaml'),
         '644',
         'manual_discovery_data',
         False,

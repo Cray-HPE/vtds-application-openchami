@@ -52,7 +52,7 @@ done
 # Make the directories that are needed for deployment and can be made by rocky
 for dir in /opt/workdir/nodes /opt/workdir/images /opt/workdir/boot /opt/workdir/cloud-init; do
     echo "Making directory: ${dir}"
-    mkdir -p '${dir}'
+    mkdir -p "${dir}"
 done
 
 # Turn on IPv4 forwarding on the management node to allow other nodes

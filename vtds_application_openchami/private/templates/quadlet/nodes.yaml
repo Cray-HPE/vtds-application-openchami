@@ -20,13 +20,10 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-# Set up the system level pieces needed to start deploying
-# OpenCHAMI. This script is intended to be run by a user with
-# passwordless 'sudo' permissions. The base node preparation script
-# sets up the user 'rocky' with that before chaining here.
+# The 'nodes.yaml' file for use in static discovery of managed nodes.
 nodes:
 {%- for node in nodes %}
-- name: {%-{ node.name }}
+- name: {{ node.name }}
   nid: {{ node.nid }}
   xname: {{ node.xname }}
   bmc_mac: {{ node.bmc_mac }}
@@ -36,9 +33,9 @@ nodes:
   {%- for interface in node.interfaces %}
   - mac_addr: {{ interface.mac_addr }}
     ip_addrs:
-    {%- for ip_addr in interfaces.ip_addrs %}
+    {%- for ip_addr in interface.ip_addrs %}
     - name: {{ ip_addr.name }}
       ip_addr: {{ ip_addr.ip_addr }}
-    {%- endfor }
+    {%- endfor %}
   {%- endfor %}
 {%- endfor %}
