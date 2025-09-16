@@ -31,6 +31,18 @@ HOST_MACS[{{ host.host_instance }}]={{ host.host_mac }}
 HOST_NODE_CLASS="{{ host_node_class }}"
 # End of templated code
 
+OPENCHAMI_FILES=(
+    "nodes.yaml"
+    "s3cfg"
+    "s3-public-read-boot.json"
+    "s3-public-read-efi.json"
+    "rocky-base-9.yaml"
+    "compute-base-rocky9.yaml"
+    "compute-debug-rocky9.yaml"
+    "build-image.sh"
+    "boot-compute-debug.yaml"
+)
+
 usage() {
     echo $* >&2
     echo "usage: prepare_node <node-type> <node-instance>" >&2
@@ -70,6 +82,13 @@ fi
 # Remove rocky from /etc/sudoers and then put it back with NOPASSWD access
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+# Copy prepared data files to the 'rocky' user
+mkdir ~rocky/openchami-files
+for file in "${OPENCHAMI_FILES[@]}"; do
+    cp "${file}" ~rocky/openchami-files/"${file}"
+done
+chown -R rocky: ~rocky/openchami-files
 
 # Run OpenCHAMI preparation script as 'rocky'
 cp /root/OpenCHAMI-Prepare.sh ~rocky/OpenCHAMI-Prepare.sh

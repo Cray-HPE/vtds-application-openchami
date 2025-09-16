@@ -1,0 +1,44 @@
+# MIT License
+#
+# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+options:
+  layer_type: base
+  name: compute-debug
+  publish_tags:
+    - 'rocky9'
+  pkg_manager: dnf
+  parent: '172.16.0.254:5000/demo/compute-base:rocky9' # XXX - needs templating
+  registry_opts_pull:
+    - '--tls-verify=false'
+
+  # Publish to local S3
+  publish_s3: 'http://172.16.0.254:9000' # XXX - needs templating
+  s3_prefix: 'compute/debug/'
+  s3_bucket: 'boot-images'
+
+packages:
+  - shadow-utils
+
+cmds:
+  # XXX - The following needs templating and to have the password
+  #       generated. This is okay for now, since this password hash is
+  #       already published elsewhere, but it needs to be cleaned up.
+  - cmd: "useradd -mG wheel -p '$6$VHdSKZNm$O3iFYmRiaFQCemQJjhfrpqqV7DdHBi5YpY6Aq06JSQpABPw.3d8PQ8bNY9NuZSmDv7IL/TsrhRJ6btkgKaonT.' testuser"
