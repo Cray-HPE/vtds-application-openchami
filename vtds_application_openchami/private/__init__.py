@@ -169,8 +169,8 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
-        template('quadlet/s3-public-read-boot.json'),
-        home('s3-public-read-boot.json'),
+        template('quadlet/s3-public-read-boot-images.json'),
+        home('s3-public-read-boot-images.json'),
         '644',
         's3_boot_file_location_information',
         False,

@@ -21,8 +21,11 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 
 # Setup endpoint
-host_base = demo.openchami.cluster:9000   # XXX - neet to template this
-host_bucket = demo.openchami.cluster:9000 # XXX - neet to template this
+#
+# XXX - neet to template this
+host_base = demo.openchami.cluster:9000
+# XXX - neet to template this
+host_bucket = demo.openchami.cluster:9000
 bucket_location = us-east-1
 use_https = False
 

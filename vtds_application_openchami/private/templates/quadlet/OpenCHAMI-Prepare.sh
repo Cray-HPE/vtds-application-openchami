@@ -28,6 +28,40 @@
 # sets up the user 'rocky' with that before chaining here.
 set -e -o pipefail
 
+# Get some image building functions into our environment
+source ~rocky/openchami-files/build-image.sh
+
+# List the image builder configuration files to use for building the
+# base OS image, the compute node base image and the compute node
+# debug image.
+#
+# XXX - Once these are templated, we might want to rename the files to
+#       reflect their more generalized natures. For now this is
+#       accurate.
+IMAGE_BUILDERS=(
+    "rocky-base-9.yaml"
+    "compute-base-rocky9.yaml"
+    "compute-debug-rocky9.yaml"
+)
+
+ROCKY_DIRS=(
+    "/data/oci"
+    "/data/s3"
+    "/opt/workdir"
+)
+
+WORK_DIRS=(
+    "/opt/workdir/nodes"
+    "/opt/workdir/images"
+    "/opt/workdir/boot"
+    "/opt/workdir/cloud-init"
+)
+
+S3_PUBLIC_BUCKETS=(
+    "efi"
+    "boot-images"
+)
+
 function fail() {
     msg="$*"
     echo "ERROR: ${msg}" >&2
@@ -43,14 +77,15 @@ NMN_HEADNODE_IP="10.1.1.11"  # XXX - This needs to be discovered or templated
 
 # Create the directories that are needed for deployment and must be
 # made by 'root'
-for dir in /data/oci /data/s3 /opt/workdir; do
+for dir in "${ROCKY_DIRS[@]}"; do
     echo "Making directory: ${dir}"
     sudo mkdir -p "${dir}"
     sudo chown -R rocky: "${dir}"
 done
 
-# Make the directories that are needed for deployment and can be made by rocky
-for dir in /opt/workdir/nodes /opt/workdir/images /opt/workdir/boot /opt/workdir/cloud-init; do
+# Make the directories that are needed for deployment and can be made
+# by rocky
+for dir in "${WORK_DIRS[@]}"; do
     echo "Making directory: ${dir}"
     mkdir -p "${dir}"
 done
@@ -156,4 +191,68 @@ sudo dnf install -y ./ochami.rpm
 # XXX- This needs to be templated to use the configured FQDN of the head node
 echo "Configuring OpenCHAMI CLI (ochami) Client"
 sudo rm -f /etc/ochami/config.yaml
-echo y | sudo ochami config cluster set --system --default demo cluster.uri "https://demo.openchami.cluster:8443" || fail "failed to configure OpenCHAMI CLI"
+echo y | sudo ochami config cluster set --system --default demo \
+              cluster.uri "https://demo.openchami.cluster:8443" \
+    || fail "failed to configure OpenCHAMI CLI"
+
+# Copy the application data files into their respective places so we are
+# ready to build and boot compute nodes.
+#
+# Copy the static node discovery inventory into place
+cp ~rocky/openchami-files/nodes.yaml /opt/workdir/nodes/nodes.yaml
+
+# Set up the 'rocky' user's S3 configuration
+cp ~rocky/openchami-files/s3cfg ~rocky/.s3cfg
+
+# Copy the S3 publicly readable EFI and Boot file settings into place
+cp ~rocky/openchami-files/s3-public-read-* /opt/workdir/
+
+# Move the image builder configurations into place
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    cp ~rocky/openchami-files/"${builder}" /opt/workdir/images/"${builder}"
+done
+
+# Add the image builder functions to the bash default environment for
+# future use
+sudo cp ~rocky/openchami-files/build-image.sh /etc/profile.d/build-image.sh
+
+# All the vTDS constructed files have been installed in their
+# respective locations, time to set things up and build some images.
+#
+# The first thing we need is credentials to interact with OpenCHAMI
+export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
+
+# Run the static node discovery (first delete any previously existing content)
+if [[ "$(ochami smd component get | jq ".Components | length")" -gt 0 ]]; then
+    echo y | ochami smd component delete --all
+fi
+ochami discover static -f yaml -d @/opt/workdir/nodes/nodes.yaml || true # FOR NOW UNTIL WE FIGURE OUT WHY SMD DOESN'T LIKE nodes.yaml
+
+# Install and configure 'regctl'
+curl -L https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 > regctl \
+    && sudo mv regctl /usr/local/bin/regctl \
+    && sudo chmod 755 /usr/local/bin/regctl
+/usr/local/bin/regctl registry set --tls disabled demo.openchami.cluster:5000
+
+# Install and configure S3 client
+for bucket in "${S3_PUBLIC_BUCKETS[@]}"; do
+    s3cmd ls | grep s3://"${bucket}" && s3cmd rb s3://"${bucket}"
+    s3cmd mb s3://"${bucket}"
+    s3cmd setacl s3://"${bucket}" --acl-public
+    s3cmd setpolicy /opt/workdir/s3-public-read-"${bucket}".json \
+          s3://"${bucket}" \
+          --host=172.16.0.254:9000 \
+          --host-bucket=172.16.0.254:9000
+done
+
+# Build the Base Image
+echo "Building the Common Base OS Image"
+build-image /opt/workdir/images/rocky-base-9.yaml
+
+# Build the Compute Node Base Image
+echo "Building the Compute Node Base OS image"
+build-image /opt/workdir/images/compute-base-rocky9.yaml
+
+# Build the Compute Node Debug Image
+echo "Building the Compute Node Debug OS image"
+build-image /opt/workdir/images/compute-debug-rocky9.yaml

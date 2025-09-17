@@ -20,49 +20,40 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-build-image-rh9()
-{
-    if [ -z "$1" ]; then
-        echo 'Path to image config file required.' 1>&2;
-        return 1;
-    fi;
-    if [ ! -f "$1" ]; then
-        echo "$1 does not exist." 1>&2;
-        return 1;
-    fi;
-    podman run \
-            --rm \
-            --device /dev/fuse \
-            -e S3_ACCESS=admin \
-            -e S3_SECRET=admin123 \
-            -v "$(realpath $1)":/home/builder/config.yaml:Z \
-            ${EXTRA_PODMAN_ARGS} \
-            ghcr.io/openchami/image-build-el9:v0.1.1 \
-            image-build \
-                --config config.yaml \
-                --log-level DEBUG
+# Report a failure message on stderr
+function _bi_fail() {
+    local func=${FUNCNAME[1]:-"unknown-function"} # Calling function
+    local message="${*:-"failing for no specified reason"}"
+    echo "${func}: ${message}" >&2
+    return 1
 }
 
-build-image-rh8()
-{
-    if [ -z "$1" ]; then
-        echo 'Path to image config file required.' 1>&2;
-        return 1;
-    fi;
-    if [ ! -f "$1" ]; then
-        echo "$1 does not exist." 1>&2;
-        return 1;
-    fi;
+function build-image() (
+    set -e
+    local config="${1}"; shift || _bi_fail "image config file not specified"
+    # Build with the specified builder. Default to using the RH9 builder
+    local builder="${1:-"ghcr.io/openchami/image-build-el9:v0.1.1"}"
+    [[ -f "${config}" ]] || fail "${config} not found"
     podman run \
            --rm \
            --device /dev/fuse \
            -e S3_ACCESS=admin \
            -e S3_SECRET=admin123 \
-           -v "$(realpath $1)":/home/builder/config.yaml:Z \
+           -v "$(realpath "${config}")":/home/builder/config.yaml:Z \
            ${EXTRA_PODMAN_ARGS} \
-           ghcr.io/openchami/image-build:v0.1.0 \
+           "${builder}" \
            image-build \
-                --config config.yaml \
-                --log-level DEBUG
+           --config config.yaml \
+           --log-level DEBUG || fail "cannot build image defined in ${config}"
+)
+
+function build-image-rh9() {
+    local config="${1}"; shift || _bi_fail "image config file not specified"
+    build-image "${config}"
 }
-alias build-image=build-image-rh9
+
+function build-image-rh8() {
+    local config="${1}"; shift || _bi_fail "image config file not specified"
+    local builder="ghcr.io/openchami/image-build:v0.1.0"
+    build-image "${config}" "${builder}"
+}

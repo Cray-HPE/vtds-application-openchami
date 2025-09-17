@@ -34,14 +34,19 @@ HOST_NODE_CLASS="{{ host_node_class }}"
 OPENCHAMI_FILES=(
     "nodes.yaml"
     "s3cfg"
-    "s3-public-read-boot.json"
-    "s3-public-read-efi.json"
     "rocky-base-9.yaml"
     "compute-base-rocky9.yaml"
     "compute-debug-rocky9.yaml"
     "build-image.sh"
     "boot-compute-debug.yaml"
 )
+# These files need to have their copyright comments stripped from them
+# because the comments break parsing.
+STRIP_COMMENT_FILES=(
+    "s3-public-read-boot-images.json"
+    "s3-public-read-efi.json"
+)
+
 
 usage() {
     echo $* >&2
@@ -84,9 +89,12 @@ sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 # Copy prepared data files to the 'rocky' user
-mkdir ~rocky/openchami-files
+mkdir -p ~rocky/openchami-files
 for file in "${OPENCHAMI_FILES[@]}"; do
     cp "${file}" ~rocky/openchami-files/"${file}"
+done
+for file in "${STRIP_COMMENT_FILES[@]}"; do
+    grep -v "^#" "${file}" > ~rocky/openchami-files/"${file}"
 done
 chown -R rocky: ~rocky/openchami-files
 
