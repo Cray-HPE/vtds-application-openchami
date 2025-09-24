@@ -448,6 +448,7 @@ class Application(ApplicationAPI):
         """
         cluster = self.stack.get_cluster_api()
         virtual_nodes = cluster.get_virtual_nodes()
+
         # We are going to go through the node classes and their
         # instances assigning NID values to each node. To make this
         # repeatable on a given config, sort the node class names so
@@ -520,8 +521,25 @@ class Application(ApplicationAPI):
         deployment.
 
         """
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
+        virtual_networks = cluster.get_virtual_networks()
+
         template_data = self.__template_data()
         template_data['nodes'] = self.__template_data_quadlet_nodes()
+        template_data['managed_node_macs'] = [
+            mac
+            for node_class in virtual_nodes.node_classes()
+            for net_name in virtual_networks.network_names()
+            for mac in (
+                    virtual_nodes.node_class_addressing(
+                        node_class, net_name
+                    ).addresses('AF_PACKET')
+                    if virtual_nodes.node_class_addressing(
+                            node_class, net_name
+                    ) is not None else []
+            )
+        ]
         return template_data
 
     def __template_data_bare(self):

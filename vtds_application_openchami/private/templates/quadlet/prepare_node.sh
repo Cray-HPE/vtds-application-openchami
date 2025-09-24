@@ -25,9 +25,6 @@ set -e -o pipefail
 
 # The following templated code is set up by the Application layer
 # deployment script before shipping this shell script to the node
-{% for host in hosts %}
-HOST_MACS[{{ host.host_instance }}]={{ host.host_mac }}
-{% endfor %}
 HOST_NODE_CLASS="{{ host_node_class }}"
 # End of templated code
 
@@ -39,6 +36,10 @@ OPENCHAMI_FILES=(
     "compute-debug-rocky9.yaml"
     "build-image.sh"
     "boot-compute-debug.yaml"
+    "coredns.container"
+    "Corefile"
+    "db.openchami.cluster"
+    "containers.conf"
 )
 # These files need to have their copyright comments stripped from them
 # because the comments break parsing.

@@ -1,0 +1,13 @@
+openchami.cluster:53 {
+    file db.openchami.cluster
+}
+
+.:53 {
+    log
+    errors
+    health
+    ready
+    forward . 169.254.169.254
+    cache
+    reload
+}

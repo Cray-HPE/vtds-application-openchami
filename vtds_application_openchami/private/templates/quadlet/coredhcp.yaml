@@ -38,7 +38,8 @@ server4:
 # want but it is much easier if you keep it set to the server IP Router
 # is also able to be set to whatever you network router address is
     - server_id: 172.16.0.254
-    - dns: 172.16.0.254
+# XXX - template this: the IP addr of the managment node
+    - dns: 10.1.1.2
 # XXX - template this: the IP addr of the managment node
     - router: 10.1.1.2
     - netmask: 255.255.255.0

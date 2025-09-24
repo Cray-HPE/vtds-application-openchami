@@ -105,8 +105,7 @@ cat <<EOF > openchami-net.xml
   <name>openchami-net</name>
   <bridge name="virbr-openchami" />
   <forward mode='route'/>
-   <ip address="${LIBVIRT_HEADNODE_IP}" netmask="${LIBVIRT_NET_MASK}">
-   </ip>
+  <ip address="${LIBVIRT_HEADNODE_IP}" netmask="${LIBVIRT_NET_MASK}" />
 </network>
 EOF
 sudo virsh net-destroy openchami-net || true
@@ -122,6 +121,13 @@ sudo virsh net-autostart openchami-net
 echo "Adding head node (${LIBVIRT_HEADNODE_IP}) to /etc/hosts"
 echo "${LIBVIRT_HEADNODE_IP} ${HEADNODE_FQDN}" | sudo tee -a /etc/hosts > /dev/null
 
+# Set up the configuration and quadlet container to launch CoreDNS
+echo "Setting up CoreDNS"
+sudo mkdir -p /etc/coredns
+sudo cp ~rocky/openchami-files/Corefile /etc/coredns/Corefile
+sudo cp ~rocky/openchami-files/db.openchami.cluster /etc/coredns/db.openchami.cluster
+sudo cp ~rocky/openchami-files/coredns.container /etc/containers/systemd/coredns.container
+
 # Set up the quadlet container definition to launch minio as an S3 server
 echo "Setting up minio container for quadlet service"
 sudo cp /root/minio.container /etc/containers/systemd/minio.container
@@ -132,8 +138,10 @@ sudo cp /root/registry.container /etc/containers/systemd/registry.container
 
 # Reload systemd to pick up the minio and registry containers and then
 # start those services
-echo "Restarting systemd and starting minio and registry services"
+echo "Restarting systemd and starting CoreDNS, minio and registry services"
 sudo systemctl daemon-reload
+sudo systemctl stop coredns.service
+sudo systemctl start coredns.service
 sudo systemctl stop minio.service
 sudo systemctl start minio.service
 sudo systemctl stop registry.service
@@ -256,3 +264,25 @@ build-image /opt/workdir/images/compute-base-rocky9.yaml
 # Build the Compute Node Debug Image
 echo "Building the Compute Node Debug OS image"
 build-image /opt/workdir/images/compute-debug-rocky9.yaml
+
+# Create the boot configuration
+echo "Creating the boot configuration"
+cd /opt/workdir/boot
+URIS=$(s3cmd ls -Hr s3://boot-images | grep compute/debug | awk '{print $4}' | sed 's-s3://-http://172.16.0.254:9000/-' | xargs)
+URI_IMG=$(echo "$URIS" | cut -d' ' -f1)
+URI_INITRAMFS=$(echo "$URIS" | cut -d' ' -f2)
+URI_KERNEL=$(echo "$URIS" | cut -d' ' -f3)
+cat <<EOF | tee /opt/workdir/boot/boot-compute-debug.yaml
+---
+kernel: '${URI_KERNEL}'
+initrd: '${URI_INITRAMFS}'
+params: 'nomodeset ro root=live:${URI_IMG} ip=dhcp overlayroot=tmpfs overlayroot_cfgdisk=disabled apparmor=0 selinux=0 console=ttyS0,115200 ip6=off cloud-init=enabled ds=nocloud-net;s=http://172.16.0.254:8081/cloud-init'
+macs:
+{%- for mac in managed_node_macs %}
+  - {{ mac }}
+{%- endfor %}
+EOF
+
+# Install the boot configuration
+echo "Install boot configuration"
+ochami bss boot params set -f yaml -d @/opt/workdir/boot/boot-compute-debug.yaml

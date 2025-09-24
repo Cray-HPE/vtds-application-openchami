@@ -1,0 +1,18 @@
+[Unit]
+Description=CoreDNS container service
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=coredns
+Image=docker.io/coredns/coredns:latest
+Volume=/etc/coredns/Corefile:/Corefile:ro,z
+Volume=/etc/coredns/db.openchami.cluster:/db.openchami.cluster:ro,z
+PublishPort=10.1.1.2:53:53/udp
+PublishPort=10.1.1.2:53:53/tcp
+
+[Install]
+WantedBy=multi-user.target
+
+[service]
+Restart=Always
