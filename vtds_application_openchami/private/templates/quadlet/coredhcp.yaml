@@ -24,9 +24,6 @@
 # OpenCHAMI. This script is intended to be run by a user with
 # passwordless 'sudo' permissions. The base node preparation script
 # sets up the user 'rocky' with that before chaining here.
-
-# XXX - This needs lots of templating and needs to support multiple scopes
-#       so that we can use real Virtual Nodes
 server4:
 # You can configure the specific interfaces that you want OpenCHAMI to
 # listen on by uncommenting the lines below and setting the interface
@@ -37,13 +34,11 @@ server4:
 # place to look for a DHCP server DNS is able to be set to whatever you
 # want but it is much easier if you keep it set to the server IP Router
 # is also able to be set to whatever you network router address is
-    - server_id: 172.16.0.254
-# XXX - template this: the IP addr of the managment node
-    - dns: 10.1.1.2
-# XXX - template this: the IP addr of the managment node
-    - router: 10.1.1.2
-    - netmask: 255.255.255.0
-# The lines below define where the system should assign ip addresses for
-# systems that do not have mac addresses stored in SMD
-    - coresmd: https://demo.openchami.cluster:8443 http://172.16.0.254:8081 /root_ca/root_ca.crt 30s 1h false
+    - server_id: {{ hosting_config.management.net_head_ip }}
+    - dns: {{ hosting_config.management.net_head_ip }}
+    - router: {{ hosting_config.management.net_head_ip }}
+    - netmask: {{ hosting_config.management.netmask }}
+    - coresmd: https://{{ hosting_config.management.net_head_fqdn }}:8443 http://{{ hosting_config.management.net_head_ip }}:8081 /root_ca/root_ca.crt 30s 1h false
+# XXX - The following should be templated based on management network
+# DHCP settings...
     - bootloop: /tmp/coredhcp.db default 5m 10.1.1.32 10.1.1.254

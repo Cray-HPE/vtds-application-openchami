@@ -25,12 +25,13 @@ options:
   publish_tags:
     - 'rocky9'
   pkg_manager: 'dnf'
-  parent: 'demo.openchami.cluster:5000/demo/rocky-base:9' # XXX - needs templating
+  # XXX - needs templating of the boot image name / tag
+  parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/rocky-base:9'
   registry_opts_pull:
     - '--tls-verify=false'
 
   # Publish SquashFS image to local S3
-  publish_s3: 'http://demo.openchami.cluster:9000' # XXX - needs templating
+  publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
   s3_prefix: 'compute/base/'
   s3_bucket: 'boot-images'
 
@@ -38,7 +39,7 @@ options:
   #
   # This is the only way to be able to re-use this image as
   # a parent for another image layer.
-  publish_registry: 'demo.openchami.cluster:5000/demo' # XXX - needs templating
+  publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
   registry_opts_push:
     - '--tls-verify=false'
 

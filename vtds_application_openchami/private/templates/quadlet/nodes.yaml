@@ -28,7 +28,8 @@ nodes:
   xname: {{ node.xname }}
   bmc_mac: {{ node.bmc_mac }}
   bmc_ip: {{ node.bmc_ip }}
-  group: {{ node.node_class }}
+  groups:
+    - {{ node.node_class }}
   interfaces:
   {%- for interface in node.interfaces %}
   - mac_addr: {{ interface.mac_addr }}

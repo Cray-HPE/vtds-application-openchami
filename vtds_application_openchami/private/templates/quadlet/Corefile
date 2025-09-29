@@ -1,4 +1,4 @@
-openchami.cluster:53 {
+{{ hosting_config.management.net_head_domain }}:53 {
     file db.openchami.cluster
 }
 

@@ -1,11 +1,11 @@
-$ORIGIN openchami.cluster.
-@       IN      SOA     ns1.openchami.cluster. hostmaster.openchami.cluster. (
+$ORIGIN {{ hosting_config.management.net_head_domain }}.
+@       IN      SOA     ns1.{{ hosting_config.management.net_head_domain }}. hostmaster.{{ hosting_config.management.net_head_domain }}. (
                         2025092201 ; serial
                         3600       ; refresh
                         1800       ; retry
                         604800     ; expire
                         60         ; minimum
 )
-        IN      NS      ns1.openchami.cluster.
-ns1     IN      A       10.1.1.2
-demo    IN      A       172.16.0.254
+        IN      NS      ns1.{{ hosting_config.management.net_head_domain }}.
+ns1     IN      A       {{ hosting_config.management.net_head_ip }}
+{{ hosting_config.management.net_head_host }}    IN      A       {{ hosting_config.management.net_head_ip }}

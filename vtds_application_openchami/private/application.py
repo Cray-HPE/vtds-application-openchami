@@ -60,11 +60,11 @@ class Application(ApplicationAPI):
         self.prepared = False
         self.deploy_mode = None
         self.deployment_files = None
-        self.template_data = None
-        self.template_data_calls = {
-            'quickstart': self.__template_data_quickstart,
-            'quadlet': self.__template_data_quadlet,
-            'bare': self.__template_data_bare,
+        self.tpl_data = None
+        self.tpl_data_calls = {
+            'quickstart': self.__tpl_data_quickstart,
+            'quadlet': self.__tpl_data_quadlet,
+            'bare': self.__tpl_data_bare,
         }
 
     def __validate_host_info(self):
@@ -268,7 +268,7 @@ class Application(ApplicationAPI):
             rie_service.pop('delete')
         return rie_service
 
-    def __template_data(self):
+    def __tpl_data(self):
 
         """Return a dictionary for use in rendering files to be
         shipped to the host node(s) for deployment based on the
@@ -297,7 +297,7 @@ class Application(ApplicationAPI):
         macs = addressing.addresses('AF_PACKET')
         discovery_networks = self.config.get('discovery_networks', {})
         bmc_mappings = self.__bmc_mappings()
-        template_data = {
+        tpl_data = {
             'host_node_class': host_node_class,
             'discovery_networks': [
                 {
@@ -323,7 +323,7 @@ class Application(ApplicationAPI):
             'rie_services': rie_services,
             'bmc_mappings': bmc_mappings,
         }
-        return template_data
+        return tpl_data
 
     def __bmc_addressing_by_node_class(self, node_classes):
         """Generate a node-class name to Virtual Blade addressing
@@ -433,15 +433,15 @@ class Application(ApplicationAPI):
             if str_list else ""
         )
 
-    def __template_data_quickstart(self):
+    def __tpl_data_quickstart(self):
         """Construct the template data dictionary used for building
         templated deployment files for the Quickstart Recipe mode of
         deployment.
 
         """
-        return self.__template_data()
+        return self.__tpl_data()
 
-    def __template_data_quadlet_nodes(self):
+    def __tpl_data_quadlet_nodes(self):
         """Construct the 'nodes' element of the quadlet system
         template data.
 
@@ -515,19 +515,15 @@ class Application(ApplicationAPI):
             for instance in range(0, virtual_nodes.node_count(node_class))
         ]
 
-    def __template_data_quadlet(self):
-        """Construct the template data dictionary used for building
-        templated deployment files for the Quadlet based mode of
-        deployment.
+    def __tpl_data_quadlet_managed_macs(self):
+        """Get the list of MAC addresses for Manaaged Nodes on their
+        networks.
 
         """
         cluster = self.stack.get_cluster_api()
         virtual_nodes = cluster.get_virtual_nodes()
         virtual_networks = cluster.get_virtual_networks()
-
-        template_data = self.__template_data()
-        template_data['nodes'] = self.__template_data_quadlet_nodes()
-        template_data['managed_node_macs'] = [
+        return [
             mac
             for node_class in virtual_nodes.node_classes()
             for net_name in virtual_networks.network_names()
@@ -540,28 +536,72 @@ class Application(ApplicationAPI):
                     ) is not None else []
             )
         ]
-        return template_data
 
-    def __template_data_bare(self):
+    def __tpl_data_quadlet_hosting_cfg(self):
+        """Get the configuration for hosting nodes under management by
+        OpenCHAMI on this system. This includes the managment network
+        IP setup, the management node IP and FQDN within the cluster,
+        whether or not libvirt hosting of a "Compute Node" on the
+        Management node is to be allowed (i.e. the tutorial use case),
+        and, if so, what the libvirt network setup is, and so forth.
+
+        XXX - these settings are hardcoded temporarily to allow them
+        to be used in templates. They need to be derived from config.
+
+        """
+        return {
+            'management': {
+                'enable': True,
+                'net_head_host': "demo",
+                'net_head_domain': "openchami.cluster",
+                'net_head_fqdn': "demo.openchami.cluster",
+                'net_head_ip': "10.1.1.2",
+                'prefix_len': "24",
+                'netmask': "255.255.255.0",
+            },
+            'cohost': {
+                'enable': False,
+                'net_head_host': "cohost_gw",
+                'net_head_domain': "openchami.cluster",
+                'net_head_fqdn': "cohost_gw.openchami.cluster",
+                'net_head_ip': "172.16.0.254",
+                'prefix_len': "24",
+                'netmask': "255.255.255.0",
+            },
+        }
+
+    def __tpl_data_quadlet(self):
+        """Construct the template data dictionary used for building
+        templated deployment files for the Quadlet based mode of
+        deployment.
+
+        """
+        tpl_data = self.__tpl_data()
+        tpl_data['nodes'] = self.__tpl_data_quadlet_nodes()
+        tpl_data['managed_macs'] = self.__tpl_data_quadlet_managed_macs()
+        tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
+        return tpl_data
+
+    def __tpl_data_bare(self):
         """Construct the template data dictionary used for building
         templated deployment files for the Bare System mode of
         deployment.
 
         """
-        return self.__template_data()
+        return self.__tpl_data()
 
-    def __choose_template_data(self):
+    def __choose_tpl_data(self):
         """Pick the appropriate template data for the configured mode of
         """
         try:
-            return self.template_data_calls[self.deploy_mode]()
+            return self.tpl_data_calls[self.deploy_mode]()
         except KeyError as err:
             raise ContextualError(
                 "unrecognized deployment mode '%s' configured - recognized "
                 "modes are: %s" % (
                     self.deploy_mode,
                     self.__formatted_str_list(
-                        list(self.template_data.keys())
+                        list(self.tpl_data.keys())
                     )
                 )
             )from err
@@ -597,7 +637,7 @@ class Application(ApplicationAPI):
                 )
             )
             with NamedTemporaryFile() as tmpfile:
-                render_template_file(source, self.template_data, tmpfile.name)
+                render_template_file(source, self.tpl_data, tmpfile.name)
                 connections.copy_to(
                     tmpfile.name, dest,
                     recurse=False, logname="upload-application-%s-to-%s" % (
@@ -626,7 +666,7 @@ class Application(ApplicationAPI):
             self.config.get('deployment', {}).get('mode', 'quickstart')
         )
         self.deployment_files = self.__choose_deployment_files()
-        self.template_data = self.__choose_template_data()
+        self.tpl_data = self.__choose_tpl_data()
 
         # Run through and remove any discovery network whose network
         # name is not defined in the cluster configuration.

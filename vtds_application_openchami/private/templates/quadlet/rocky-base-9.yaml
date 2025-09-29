@@ -25,7 +25,7 @@ options:
   publish_tags: '9'
   pkg_manager: 'dnf'
   parent: 'scratch'
-  publish_registry: 'demo.openchami.cluster:5000/demo' # XXX - needs templating
+  publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
   registry_opts_push:
     - '--tls-verify=false'
 

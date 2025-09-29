@@ -35,6 +35,7 @@ function build-image() (
     local builder="${1:-"ghcr.io/openchami/image-build-el9:v0.1.1"}"
     [[ -f "${config}" ]] || fail "${config} not found"
     podman run \
+           --network=host \
            --rm \
            --device /dev/fuse \
            -e S3_ACCESS=admin \

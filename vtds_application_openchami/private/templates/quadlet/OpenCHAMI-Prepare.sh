@@ -68,12 +68,34 @@ function fail() {
     exit 1
 }
 
+function discovery_version() {
+    # The version of SMD changed how ochami needs to feed it manually
+    # discovered node data at 2.19. We need an extra option to address
+    # that if the version is 2.18 or lower.
+    local major=""
+    local minor=""
+    local patch=""
+    IFS='.' read major minor patch < \
+       <( \
+          sudo podman ps | \
+              grep '/smd:v' | \
+              awk '{sub(/^.*:v/, "", $2); print $2 }'\
+       )
+    if [ "${major}" -le "2" -a "${minor}" -lt "19" ]; then
+       echo "--discovery-version=1"
+    fi
+}
+
 # Some useful variables that can be templated
-HEADNODE_FQDN="demo.openchami.cluster"
-LIBVIRT_HEADNODE_IP="172.16.0.254"
-LIBVIRT_NET_LENGTH="24"
-LIBVIRT_NET_MASK="255.255.255.0"  # Computed from length when tempated
-NMN_HEADNODE_IP="10.1.1.11"  # XXX - This needs to be discovered or templated
+MANAGEMENT_HEADNODE_FQDN="{{ hosting_config.management.net_head_fqdn }}"
+MANAGEMENT_HEADNODE_IP="{{ hosting_config.management.net_head_ip }}"
+MANAGEMENT_NET_LENGTH="{{ hosting_config.management.prefix_len }}"
+MANAGEMENT_NET_MASK="{{ hosting_config.management.netmask }}"
+{%- if hosting_config.cohost.enable %}
+LIBVIRT_NET_IP="{{ hosting_config.cohost.net_head_ip }}"
+LIBVIRT_NET_LENGTH="{{ hosting_config.cohost.prefix_len }}"
+LIBVIRT_NET_MASK="{{ hosting_config.cohost.netmask }}"
+{%- endif %}
 
 # Create the directories that are needed for deployment and must be
 # made by 'root'
@@ -94,18 +116,16 @@ done
 # to reach OpenCHAMI services
 sudo sysctl -w net.ipv4.ip_forward=1
 
+{%- if hosting_config.cohost.enable %}
 # Create a virtual bridged network within libvirt to act as the node
 # local network used by OpenCHAMI services.
-#
-# XXX - Creation of this should be templated and configurable, as
-#       should the network IP and the head node IP.
 echo "Setting up libvirt bridge network for OpenCHAMI"
 cat <<EOF > openchami-net.xml
 <network>
   <name>openchami-net</name>
   <bridge name="virbr-openchami" />
   <forward mode='route'/>
-  <ip address="${LIBVIRT_HEADNODE_IP}" netmask="${LIBVIRT_NET_MASK}" />
+  <ip address="${LIBVIRT_NET_IP}" netmask="${LIBVIRT_NET_MASK}" />
 </network>
 EOF
 sudo virsh net-destroy openchami-net || true
@@ -114,12 +134,12 @@ sudo virsh net-define openchami-net.xml
 sudo virsh net-start openchami-net
 sudo virsh net-autostart openchami-net
 
-# Set up an /etc/hosts entry for the OpenCHAMI head node so we can use
-# it for certs and for reaching the services.
-#
-# XXX - This should be templated so it is configurable, both IP and FQDM
-echo "Adding head node (${LIBVIRT_HEADNODE_IP}) to /etc/hosts"
-echo "${LIBVIRT_HEADNODE_IP} ${HEADNODE_FQDN}" | sudo tee -a /etc/hosts > /dev/null
+{%- endif %}
+# Set up an /etc/hosts entry for the OpenCHAMI management head node so
+# we can use it for certs and for reaching the services.
+echo "Adding head node (${MANAGEMENT_HEADNODE_IP}) to /etc/hosts"
+echo "${MANAGEMENT_HEADNODE_IP} ${MANAGEMENT_HEADNODE_FQDN}" | \
+    sudo tee -a /etc/hosts > /dev/null
 
 # Set up the configuration and quadlet container to launch CoreDNS
 echo "Setting up CoreDNS"
@@ -151,6 +171,7 @@ sudo systemctl start registry.service
 #
 # XXX - the VERSION here should be templated and configurable
 echo "Finding OpenCHAMI RPM"
+cd /opt/workdir
 OWNER="openchami"
 REPO="release"
 OPENCHAMI_VERSION="latest"
@@ -180,7 +201,7 @@ sudo cp /root/coredhcp.yaml /etc/openchami/configs/coredhcp.yaml
 #
 # XXX - this needs to be templated to use the configured FQDN of the head node
 echo "Setting up cluster SSL certs for OpenCHAMI"
-sudo openchami-certificate-update update demo.openchami.cluster
+sudo openchami-certificate-update update "${MANAGEMENT_HEADNODE_FQDN}"
 
 # Start OpenCHAMI
 echo "Starting OpenCHAMI"
@@ -200,7 +221,7 @@ sudo dnf install -y ./ochami.rpm
 echo "Configuring OpenCHAMI CLI (ochami) Client"
 sudo rm -f /etc/ochami/config.yaml
 echo y | sudo ochami config cluster set --system --default demo \
-              cluster.uri "https://demo.openchami.cluster:8443" \
+              cluster.uri "https://${MANAGEMENT_HEADNODE_FQDN}:8443" \
     || fail "failed to configure OpenCHAMI CLI"
 
 # Copy the application data files into their respective places so we are
@@ -234,23 +255,23 @@ export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 if [[ "$(ochami smd component get | jq ".Components | length")" -gt 0 ]]; then
     echo y | ochami smd component delete --all
 fi
-ochami discover static -f yaml -d @/opt/workdir/nodes/nodes.yaml || true # FOR NOW UNTIL WE FIGURE OUT WHY SMD DOESN'T LIKE nodes.yaml
+ochami discover static $(discovery_version) -f yaml -d @/opt/workdir/nodes/nodes.yaml || true # FOR NOW UNTIL WE FIGURE OUT WHY SMD DOESN'T LIKE nodes.yaml
 
 # Install and configure 'regctl'
 curl -L https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 > regctl \
     && sudo mv regctl /usr/local/bin/regctl \
     && sudo chmod 755 /usr/local/bin/regctl
-/usr/local/bin/regctl registry set --tls disabled demo.openchami.cluster:5000
+/usr/local/bin/regctl registry set --tls disabled "${MANAGEMENT_HEADNODE_FQDN}:5000"
 
 # Install and configure S3 client
 for bucket in "${S3_PUBLIC_BUCKETS[@]}"; do
-    s3cmd ls | grep s3://"${bucket}" && s3cmd rb s3://"${bucket}"
+    s3cmd ls | grep s3://"${bucket}" && s3cmd rb -r s3://"${bucket}"
     s3cmd mb s3://"${bucket}"
     s3cmd setacl s3://"${bucket}" --acl-public
     s3cmd setpolicy /opt/workdir/s3-public-read-"${bucket}".json \
           s3://"${bucket}" \
-          --host=172.16.0.254:9000 \
-          --host-bucket=172.16.0.254:9000
+          --host="${MANAGEMENT_HEADNODE_IP}:9000" \
+          --host-bucket="${MANAGEMENT_HEADNODE_IP}:9000"
 done
 
 # Build the Base Image
@@ -268,20 +289,23 @@ build-image /opt/workdir/images/compute-debug-rocky9.yaml
 # Create the boot configuration
 echo "Creating the boot configuration"
 cd /opt/workdir/boot
-URIS=$(s3cmd ls -Hr s3://boot-images | grep compute/debug | awk '{print $4}' | sed 's-s3://-http://172.16.0.254:9000/-' | xargs)
-URI_IMG=$(echo "$URIS" | cut -d' ' -f1)
-URI_INITRAMFS=$(echo "$URIS" | cut -d' ' -f2)
-URI_KERNEL=$(echo "$URIS" | cut -d' ' -f3)
+URIS="$(s3cmd ls -Hr s3://boot-images | grep compute/debug | awk '{print $4}' | sed "s-s3://-http://${MANAGEMENT_HEADNODE_IP}:9000/-" | xargs)"
+URI_IMG="$(echo "$URIS" | cut -d' ' -f1)"
+URI_INITRAMFS="$(echo "$URIS" | cut -d' ' -f2)"
+URI_KERNEL="$(echo "${URIS}" | cut -d' ' -f3)"
 cat <<EOF | tee /opt/workdir/boot/boot-compute-debug.yaml
 ---
 kernel: '${URI_KERNEL}'
 initrd: '${URI_INITRAMFS}'
-params: 'nomodeset ro root=live:${URI_IMG} ip=dhcp overlayroot=tmpfs overlayroot_cfgdisk=disabled apparmor=0 selinux=0 console=ttyS0,115200 ip6=off cloud-init=enabled ds=nocloud-net;s=http://172.16.0.254:8081/cloud-init'
+params: 'nomodeset ro root=live:${URI_IMG} ip=dhcp overlayroot=tmpfs overlayroot_cfgdisk=disabled apparmor=0 selinux=0 console=ttyS0,115200 ip6=off cloud-init=enabled ds=nocloud-net;s=http://${MANAGEMENT_HEADNODE_IP}:8081/cloud-init'
 macs:
-{%- for mac in managed_node_macs %}
+{%- for mac in managed_macs %}
   - {{ mac }}
 {%- endfor %}
 EOF
+
+# Refresh ochami token after the image builds in case it expired
+export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 
 # Install the boot configuration
 echo "Install boot configuration"
