@@ -25,9 +25,6 @@ set -e -o pipefail
 
 # The following templated code is set up by the Application layer
 # deployment script before shipping this shell script to the node
-{% for host in hosts %}
-HOST_MACS[{{ host.host_instance }}]={{ host.host_mac }}
-{% endfor %}
 HOST_NODE_CLASS="{{ host_node_class }}"
 # End of templated code
 
