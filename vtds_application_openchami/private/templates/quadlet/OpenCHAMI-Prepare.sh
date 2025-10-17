@@ -310,3 +310,13 @@ export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 # Install the boot configuration
 echo "Install boot configuration"
 ochami bss boot params set -f yaml -d @/opt/workdir/boot/boot-compute-debug.yaml
+
+# Now that all the images are in place and the managed nodes have been
+# configured, go through and start them all using RedFish curls.
+#
+# XXX - we need to add BMC user and BMC password to these actions, get
+#       from config and add to template. Then pick up here as the
+#       third and fourth args to 'turn_on_node'
+{%- for node in nodes %}
+turn_on_node "{{ node.bmc_ip }}" "{{ node.xname }}"
+{%- endfor %}

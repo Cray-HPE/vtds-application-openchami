@@ -94,7 +94,7 @@ application:
       # the configuration automatically if it is null. Override it at your
       # own risk if you want a known value.
       redfish_username: root
-      redfish_password: null
+      redfish_password: root_password
       # The list of Virtual Blade classes here tells the management node
       # deployment which blade classes to include in the set of RedFish
       # endpoints that need mappings to xnames.

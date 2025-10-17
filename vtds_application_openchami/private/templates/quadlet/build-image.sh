@@ -58,3 +58,45 @@ function build-image-rh8() {
     local builder="ghcr.io/openchami/image-build:v0.1.0"
     build-image "${config}" "${builder}"
 }
+
+function turn_on_node() {
+    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
+    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
+    local bmc_user="${1}"; shift || bmc_user="root"
+    local bmc_password="${1}"; shift || bmc_password="root_password"
+    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
+    local node_action="${node_xname}/Actions/ComputerSystem.Reset"
+
+    curl -k -u "${bmc_user}:${bmc_password}" \
+         -H "Content-Type: application/json" \
+         -X POST -d '{"ResetType": "On" }' \
+         "${bmc_url}/${node_action}"
+}
+
+function turn_off_node() {
+    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
+    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
+    local bmc_user="${1}"; shift || bmc_user="root"
+    local bmc_password="${1}"; shift || bmc_password="root_password"
+    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
+    local node_action="${node_xname}/Actions/ComputerSystem.Reset"
+
+    curl -k -u "${bmc_user}:${bmc_password}" \
+         -H "Content-Type: application/json" \
+         -X POST -d '{"ResetType": "ForceOff" }' \
+         "${bmc_url}/${node_action}"
+}
+
+function restart_node() {
+    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
+    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
+    local bmc_user="${1}"; shift || bmc_user="root"
+    local bmc_password="${1}"; shift || bmc_password="root_password"
+    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
+    local node_action="${node_xname}/Actions/ComputerSystem.Reset"
+
+    curl -k -u "${bmc_user}:${bmc_password}" \
+         -H "Content-Type: application/json" \
+         -X POST -d '{"ResetType": "ForceRestart" }' \
+         "${bmc_url}/${node_action}"
+}

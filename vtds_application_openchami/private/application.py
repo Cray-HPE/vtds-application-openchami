@@ -399,7 +399,7 @@ class Application(ApplicationAPI):
                     instance, class_name, virtual_nodes.node_count(class_name)
                 )
             )
-        base_nid = 0
+        base_nid = 1
         for current_class in classes:
             if class_name == current_class:
                 return base_nid + instance
