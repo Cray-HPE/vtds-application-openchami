@@ -20,13 +20,13 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 options:
-  layer_type: 'base'
-  name: 'compute-base'
+  layer_type: base
+  name: compute-base
   publish_tags:
     - 'rocky9'
-  pkg_manager: 'dnf'
+  pkg_manager: dnf
   # XXX - needs templating of the boot image name / tag
-  parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/rocky-base:9'
+  parent: '{{ hosting_config.management.net_head_ip }}:5000/demo/rocky-base:9'
   registry_opts_pull:
     - '--tls-verify=false'
 

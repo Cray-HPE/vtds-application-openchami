@@ -23,6 +23,20 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 set -e -o pipefail
 
+function find_if_by_cidr() {
+    addr=${1}; shift || fail "no CIDR supplied when looking up ip interface"
+    ip --json a | \
+        jq -r "\
+          .[] | .ifname as \$ifname | \
+          .addr_info | .[] | \
+              select( .family == \"inet\") | \
+              select( (.local + \"/\" + ( .prefixlen | tostring)) == \"${addr}\" ) | \
+              \"\(\$ifname)\" \
+        "
+}
+
+# Find the interface on which NAT is running and the 
+
 # Create the directory in /etc where all of the Sushy Tools setup will
 # go.
 mkdir -p /etc/sushy-emulator
@@ -57,3 +71,48 @@ cp /root/sushy-emulator.service /etc/systemd/system/sushy-emulator.service
 systemctl daemon-reload
 systemctl enable --now sushy-emulator
 systemctl enable --now nginx
+
+{%- if hosting_config is defined %}
+# Set up an alternative hosts file just for OpenCHAMI that dnsMasq
+# will serve OpenCHAMI host info from.
+cat <<EOF > /etc/hosts_openchami
+{{ hosting_config.management.net_head_ip }} {{ hosting_config.management.net_head_fqdn }}
+EOF
+
+# Set up dnsmasq with the FQDN of the cluster head node (management
+# node) presented on the management network.
+if ip address | grep {{ hosting_config.management.net_head_dns_server }}; then
+    cat <<EOF > /etc/dnsmasq.conf
+# Serving DNS on port 53
+port=53
+# Forward unresolved requests to the GCP metadata / DNS server
+server={{ hosting_config.management.upstream_dns_server }}
+# Listen on the management network and on localhost
+listen-address={{ hosting_config.management.net_head_dns_server }}
+listen-address=127.0.0.1
+# Don't serve /etc/hosts because that has addresses that most other nodes
+# can't reach.
+no-hosts
+# Serve the OpenCHAMI hosts instead.
+addn-hosts=/etc/hosts_openchami
+EOF
+systemctl enable --now dnsmasq
+fi
+{%- endif %}
+
+# Set up NAT on the blade's public IP if this is the NAT blade
+# (i.e. the blade hosting the management node)
+NAT_CIDR="{{ hosting_config.management.nat_if_cidr }}"
+NAT_ADDR="$(echo "${NAT_CIDR}" | cut -d / -f 1)"
+NAT_IF="$(find_if_by_cidr "${NAT_CIDR}")"
+CLUSTER_CIDR="{{ hosting_config.management.cluster_net_cidr }}"
+if [[ "${NAT_IF}" != "" ]]; then
+    nft flush ruleset
+    nft add table nat
+    nft 'add chain nat postrouting { type nat hook postrouting priority 100 ; }'
+    nft add rule nat postrouting ip \
+        saddr ${CLUSTER_CIDR} \
+        oif ${NAT_IF} \
+        snat to ${NAT_ADDR}
+    nft add rule nat postrouting masquerade
+fi

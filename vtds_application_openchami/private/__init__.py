@@ -52,7 +52,7 @@ def home(filename):
     return path_join(separator, "root", filename)
 
 
-# Templated files to be deployed to the managment node: (source, dest,
+# Templated files to be deployed to the management node: (source, dest,
 # mode, tag, run)
 #
 # Management node files for the Quickstart recipe deployment mode
@@ -155,24 +155,10 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
-        template('quadlet/coredns.container'),
-        home('coredns.container'),
-        '644',
-        'coredns_quadlet_container_specification',
-        False,
-    ),
-    (
         template('quadlet/Corefile'),
         home('Corefile'),
         '644',
         'coredns_runtime_config',
-        False,
-    ),
-    (
-        template('quadlet/db.openchami.cluster'),
-        home('db.openchami.cluster'),
-        '644',
-        'coredns_openchami_domain_names',
         False,
     ),
     (
@@ -250,6 +236,13 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         home('OpenCHAMI-Prepare.sh'),
         '755',
         'open_chami_prepare_script',
+        False,
+    ),
+    (
+        template('quadlet/prep_setup.sh'),
+        home('prep_setup.sh'),
+        '644',
+        'node_prepare_setup_library',
         False,
     ),
     (

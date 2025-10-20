@@ -21,12 +21,10 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-set -e -o pipefail
 
-# The following templated code is set up by the Application layer
-# deployment script before shipping this shell script to the node
-HOST_NODE_CLASS="{{ host_node_class }}"
-# End of templated code
+# Pick up the common setup for the prepare scripts
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
+source "${SCRIPT_DIR}/prep_setup.sh"
 
 OPENCHAMI_FILES=(
     "nodes.yaml"
@@ -36,10 +34,9 @@ OPENCHAMI_FILES=(
     "compute-debug-rocky9.yaml"
     "build-image.sh"
     "boot-compute-debug.yaml"
-    "coredns.container"
     "Corefile"
-    "db.openchami.cluster"
     "containers.conf"
+    "prep_setup.sh"
 )
 # These files need to have their copyright comments stripped from them
 # because the comments break parsing.
@@ -55,21 +52,23 @@ usage() {
     exit 1
 }
 
-fail() {
-    echo $* >&2
-    exit 1
-}
-
 # Get the command line arguments, expecting a node type name and an
 # instance number in that order.
 NODE_TYPE="${1}"; shift || usage "no node type specified"
 NODE_INSTANCE="${1}"; shift || usage "no node instance number specified"
 
 # If this node is not one of the management nodes, there is nothing to do
-if [ "${NODE_TYPE}" != "${HOST_NODE_CLASS}" ]; then
+if [ "${NODE_TYPE}" != "${MANAGEMENT_NODE_CLASS}" ]; then
     # Not the OpenCHAMI management node, nothing to do, just succeed
     exit 0
 fi
+
+# Move the NAMESERVER for the management node over to the external
+# nameserver hosted by the host blade and add the cluster domain to
+# the domain search path. Since the nameserver here will be on the
+# management network but not local, specify the local IP on the
+# management network as the network parameter to switch_dns.
+switch_dns "${MANAGEMENT_EXT_NAMESERVER}" "${CLUSTER_DOMAIN}" "${MANAGEMENT_HEADNODE_IP}"
 
 # This is a management node, so set up OpenCHAMI and get it running and
 # initialized

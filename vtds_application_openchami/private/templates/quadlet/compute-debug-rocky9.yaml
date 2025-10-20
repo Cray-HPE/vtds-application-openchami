@@ -26,12 +26,12 @@ options:
     - 'rocky9'
   pkg_manager: dnf
   # XXX - needs templating of image name and tag
-  parent: '{{ hosting_config.management.net_head_ip }}:5000/demo/compute-base:rocky9'
+  parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/compute-base:rocky9'
   registry_opts_pull:
     - '--tls-verify=false'
 
   # Publish to local S3
-  publish_s3: 'http://{{ hosting_config.management.net_head_ip }}:9000'
+  publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
   s3_prefix: 'compute/debug/'
   s3_bucket: 'boot-images'
 

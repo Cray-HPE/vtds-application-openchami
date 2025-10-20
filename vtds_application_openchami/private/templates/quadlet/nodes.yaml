@@ -29,14 +29,16 @@ nodes:
   bmc_mac: {{ node.bmc_mac }}
   bmc_ip: {{ node.bmc_ip }}
   groups:
-    - {{ node.node_class }}
+    - {{ node.node_group }}
   interfaces:
   {%- for interface in node.interfaces %}
+  {%- if interface.network_name == node.cluster_net_interface %}
   - mac_addr: {{ interface.mac_addr }}
     ip_addrs:
     {%- for ip_addr in interface.ip_addrs %}
     - name: {{ ip_addr.name }}
       ip_addr: {{ ip_addr.ip_addr }}
     {%- endfor %}
+  {%- endif %}
   {%- endfor %}
 {%- endfor %}

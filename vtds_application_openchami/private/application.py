@@ -294,6 +294,13 @@ class Application(ApplicationAPI):
         addressing = virtual_nodes.node_class_addressing(
             host_node_class, host_network
         )
+        if addressing is None:
+            raise ContextualError(
+                "unable to find addressing for the host network '%s' "
+                "configured on the host node class '%s' - check your "
+                "application configuration and see that it matches your "
+                "cluster configuration." % (host_network, host_node_class)
+            )
         macs = addressing.addresses('AF_PACKET')
         discovery_networks = self.config.get('discovery_networks', {})
         bmc_mappings = self.__bmc_mappings()
@@ -477,6 +484,8 @@ class Application(ApplicationAPI):
                 # Name here will be the node's name (i.e. domain name,
                 # not host name) which is also its xname
                 'name': virtual_nodes.node_node_name(node_class, instance),
+                # Hostname here will be the node's host name
+                'hostname': virtual_nodes.node_hostname(node_class, instance),
                 # NIDs are computed by sorting the node classes then
                 # running through each node class and counting its
                 # members. This is deterministic for a given config
@@ -493,9 +502,25 @@ class Application(ApplicationAPI):
                 'bmc_ip':  addressing.address(
                     'AF_INET', bmc_instances[(node_class, instance)]
                 ),
+                'cluster_net_interface': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'cluster_net_interface', ""
+                    )
+                ),
+                'management_net_interface': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'management_net_interface', ""
+                    )
+                ),
                 'node_class': node_class,
+                'node_group': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'node_group', node_class
+                    )
+                ),
                 'interfaces': [
                     {
+                        'network_name': net_name,
                         'mac_addr': virtual_nodes.node_class_addressing(
                             node_class, net_name
                         ).address('AF_PACKET', instance),
@@ -539,7 +564,7 @@ class Application(ApplicationAPI):
 
     def __tpl_data_quadlet_hosting_cfg(self):
         """Get the configuration for hosting nodes under management by
-        OpenCHAMI on this system. This includes the managment network
+        OpenCHAMI on this system. This includes the management network
         IP setup, the management node IP and FQDN within the cluster,
         whether or not libvirt hosting of a "Compute Node" on the
         Management node is to be allowed (i.e. the tutorial use case),
@@ -555,7 +580,17 @@ class Application(ApplicationAPI):
                 'net_head_host': "demo",
                 'net_head_domain': "openchami.cluster",
                 'net_head_fqdn': "demo.openchami.cluster",
-                'net_head_ip': "10.1.1.2",
+                'net_head_ip': "10.2.1.2",
+                'cluster_net_dhcp_start': "10.2.1.32",
+                'cluster_net_dhcp_end': "10.2.1.254",
+                'cluster_net_cidr': "10.2.1.0/24",
+                'nat_if_cidr': "10.255.1.1/32",
+                # The IP address where the head-node's FQDN and
+                # external DNS are configured: normally the management
+                # network address of the first Virtual Blade hosting a
+                # management node.
+                'net_head_dns_server': "10.234.0.1",
+                'upstream_dns_server': "169.254.169.254",
                 'prefix_len': "24",
                 'netmask': "255.255.255.0",
             },

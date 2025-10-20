@@ -59,9 +59,36 @@ function build-image-rh8() {
     build-image "${config}" "${builder}"
 }
 
-function turn_on_node() {
-    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
+function generate-boot-config() {
+    local image_subpath="${1}"; shift || _bi_fail "image subpath (example 'compute/debug') not provided as first argument"
+    local headnode_ip="${1}"; shift || _bi_fail "management head-node IP address not provided as second argument"
+    local macs="$(for mac in "$@"; do echo "${mac}"; done)"
+    [[ "${macs}" != "" ]] || _bi_fail "no target node MAC addresses provided"
+    cd /opt/workdir/boot
+    local uris="$(s3cmd ls -Hr s3://boot-images | grep "${image_subpath}" | \
+                        awk '{print $4}' | \
+                        sed "s-s3://-http://${headnode_ip}:9000/-" | \
+                        xargs)"
+    local uri_img="$(echo "${uris}" | cut -d' ' -f1)"
+    [[ "${uri_img}" != "" ]] || _bi_fail "no disk image found that matches '${image_subpath}'"
+    local uri_initramfs="$(echo "${uris}" | cut -d' ' -f2)"
+    [[ "${uri_initramfs}" != "" ]] || _bi_fail "no initrd image found that matches '${image_subpath}'"
+    local uri_kernel="$(echo "${uris}" | cut -d' ' -f3)"
+    [[ "${uri_kernel}" != "" ]] || _bi_fail "no kernel image found that matches '${image_subpath}'"
+    cat <<EOF
+---
+kernel: '${uri_kernel}'
+initrd: '${uri_initramfs}'
+params: 'nomodeset ro root=live:${uri_img} ip=dhcp overlayroot=tmpfs overlayroot_cfgdisk=disabled apparmor=0 selinux=0 console=ttyS0,115200 ip6=off cloud-init=enabled ds=nocloud-net;s=http://${headnode_ip}:8081/cloud-init'
+macs:
+$(for mac in ${macs}; do echo "  - ${mac}"; done)
+EOF
+}
+
+function __node_reset() {
+    local reset_type="${1}"; shift || _bi_fail "no reset type supplied"
     local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
+    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
     local bmc_user="${1}"; shift || bmc_user="root"
     local bmc_password="${1}"; shift || bmc_password="root_password"
     local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
@@ -69,34 +96,22 @@ function turn_on_node() {
 
     curl -k -u "${bmc_user}:${bmc_password}" \
          -H "Content-Type: application/json" \
-         -X POST -d '{"ResetType": "On" }' \
+         -X POST -d "{\"ResetType\": \"${reset_type}\" }" \
          "${bmc_url}/${node_action}"
 }
 
-function turn_off_node() {
-    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
-    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
-    local bmc_user="${1}"; shift || bmc_user="root"
-    local bmc_password="${1}"; shift || bmc_password="root_password"
-    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
-    local node_action="${node_xname}/Actions/ComputerSystem.Reset"
-
-    curl -k -u "${bmc_user}:${bmc_password}" \
-         -H "Content-Type: application/json" \
-         -X POST -d '{"ResetType": "ForceOff" }' \
-         "${bmc_url}/${node_action}"
+function power-on-node() {
+    __node_reset "On" "$@"
 }
 
-function restart_node() {
-    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
-    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
-    local bmc_user="${1}"; shift || bmc_user="root"
-    local bmc_password="${1}"; shift || bmc_password="root_password"
-    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
-    local node_action="${node_xname}/Actions/ComputerSystem.Reset"
+function power-off-node() {
+    __node_reset "ForceOff" "$@"
+}
 
-    curl -k -u "${bmc_user}:${bmc_password}" \
-         -H "Content-Type: application/json" \
-         -X POST -d '{"ResetType": "ForceRestart" }' \
-         "${bmc_url}/${node_action}"
+function restart-node() {
+    __node_reset "ForceRestart" "$@"
+}
+
+function get-ochami-token() {
+    export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 }
