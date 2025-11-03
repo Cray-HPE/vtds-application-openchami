@@ -28,11 +28,6 @@ application:
   #
   # The modes are:
   #
-  #   'quickstart' - a deployment mode using the Quickstart OpenCHAMI
-  #                  deployment recipe to deploy OpenCHAMI with Magellan
-  #                  and RIE in a Docker compose cluster, potentially
-  #                  with Virtual Compute Nodes.
-  #
   #   'quadlet'    - a deployment mode that deploys OpenCHAMI into
   #                  systemd managed podman quadlets loosely based on
   #                  the OpenCHAMI 2025 Tutorial, but with support for
@@ -45,7 +40,7 @@ application:
   #                  deployed that is ready for the 2025 Tutorial to be
   #                  run on it.
   deployment:
-    mode: quickstart
+    mode: quadlet
 
   # The host block identifies the Virtual Network on which OpenCHAMI is
   # hosted and the Virtual Node class whose instances will run

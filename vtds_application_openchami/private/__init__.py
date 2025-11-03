@@ -55,72 +55,6 @@ def home(filename):
 # Templated files to be deployed to the management node: (source, dest,
 # mode, tag, run)
 #
-# Management node files for the Quickstart recipe deployment mode
-QUICKSTART_MANAGEMENT_NODE_FILES = [
-    (
-        template('quickstart/magellan_discovery_dockerfile'),
-        home('magellan_discovery_dockerfile'),
-        '644',
-        'magellan-discovery-dockerfile',
-        False
-    ),
-    (
-        template('quickstart/magellan_discovery.sh'),
-        home('magellan_discovery.sh'),
-        '755',
-        'magellan_discovery_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Stage1-Deploy.sh'),
-        home('OpenCHAMI-Stage1-Deploy.sh'),
-        '755',
-        'OpenCHAMI_Stage1_Deploy_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Stage2-Deploy.sh'),
-        home('OpenCHAMI-Stage2-Deploy.sh'),
-        '755',
-        'OpenCHAMI_Stage2_Deploy_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Prepare.sh'),
-        home('OpenCHAMI-Prepare.sh'),
-        '755',
-        'OpenCHAMI_Prepare_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Remove.sh'),
-        home('OpenCHAMI-Remove.sh'),
-        '755',
-        'OpenCHAMI_Remove_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Logs.sh'),
-        home('OpenCHAMI-Logs.sh'),
-        '755',
-        'OpenCHAMI_Logs_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Show.sh'),
-        home('OpenCHAMI-Show.sh'),
-        '755',
-        'OpenCHAMI_Show_script',
-        False,
-    ),
-    (
-        template('quickstart/prepare_node.sh'),
-        home('prepare_node.sh'),
-        '755',
-        'node_prepare_script',
-        True,
-    ),
-]
 # Management node files for the bare system deployment mode
 BARE_MANAGEMENT_NODE_FILES = [
     (
@@ -287,7 +221,6 @@ BLADE_FILES = [
 ]
 
 deployment_files = {
-    'quickstart': (BLADE_FILES, QUICKSTART_MANAGEMENT_NODE_FILES),
     'bare': (BLADE_FILES, BARE_MANAGEMENT_NODE_FILES),
     'quadlet': (BLADE_FILES, QUADLET_MANAGEMENT_NODE_FILES),
 }

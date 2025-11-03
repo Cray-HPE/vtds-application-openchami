@@ -62,7 +62,6 @@ class Application(ApplicationAPI):
         self.deployment_files = None
         self.tpl_data = None
         self.tpl_data_calls = {
-            'quickstart': self.__tpl_data_quickstart,
             'quadlet': self.__tpl_data_quadlet,
             'bare': self.__tpl_data_bare,
         }
@@ -440,14 +439,6 @@ class Application(ApplicationAPI):
             if str_list else ""
         )
 
-    def __tpl_data_quickstart(self):
-        """Construct the template data dictionary used for building
-        templated deployment files for the Quickstart Recipe mode of
-        deployment.
-
-        """
-        return self.__tpl_data()
-
     def __tpl_data_quadlet_nodes(self):
         """Construct the 'nodes' element of the quadlet system
         template data.
@@ -696,9 +687,9 @@ class Application(ApplicationAPI):
     def consolidate(self):
         # Set up for preparing and shipping deployment files
         #
-        # Get the deployment mode from the config. Default to 'quickstart'.
+        # Get the deployment mode from the config. Default to 'quadlet'.
         self.deploy_mode = (
-            self.config.get('deployment', {}).get('mode', 'quickstart')
+            self.config.get('deployment', {}).get('mode', 'quadlet')
         )
         self.deployment_files = self.__choose_deployment_files()
         self.tpl_data = self.__choose_tpl_data()
