@@ -29,6 +29,7 @@ from uuid import uuid4
 
 from vtds_base import (
     info_msg,
+    warning_msg,
     ContextualError,
     render_template_file,
 )
@@ -59,11 +60,10 @@ class Application(ApplicationAPI):
         self.prepared = False
         self.deploy_mode = None
         self.deployment_files = None
-        self.template_data = None
-        self.template_data_calls = {
-            'quickstart': self.__template_data_quickstart,
-            'quadlet': self.__template_data_quadlet,
-            'bare': self.__template_data_bare,
+        self.tpl_data = None
+        self.tpl_data_calls = {
+            'quadlet': self.__tpl_data_quadlet,
+            'bare': self.__tpl_data_bare,
         }
 
     def __validate_host_info(self):
@@ -171,9 +171,15 @@ class Application(ApplicationAPI):
                 )
 
     def __bmc_mappings(self):
-        """Return a dictionary of Virtual Blade IP addresses (on any
-        discovery network with Virtual Blades on it) to the respective
-        Virtual Blade xnames.
+        """Return a list of dictionaries echo of which contains the
+        xname and address of a Virtual Blade, for every Virtual Blade
+        connected to a discovery network and for every address family
+        each blade supports. For example, if there are 5 Virtual
+        Blades connected to a discovery network, and each has an
+        AF_INET (IPv4) address and an AF_PACKET (MAC) address, there
+        would be two entries in the list per blade: one containing the
+        xname and IPv4 address and the other containing the same xname
+        and the MAC address. Hence a total of 10 entries in the list.
 
         """
         virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
@@ -261,7 +267,7 @@ class Application(ApplicationAPI):
             rie_service.pop('delete')
         return rie_service
 
-    def __template_data(self):
+    def __tpl_data(self):
 
         """Return a dictionary for use in rendering files to be
         shipped to the host node(s) for deployment based on the
@@ -287,10 +293,17 @@ class Application(ApplicationAPI):
         addressing = virtual_nodes.node_class_addressing(
             host_node_class, host_network
         )
+        if addressing is None:
+            raise ContextualError(
+                "unable to find addressing for the host network '%s' "
+                "configured on the host node class '%s' - check your "
+                "application configuration and see that it matches your "
+                "cluster configuration." % (host_network, host_node_class)
+            )
         macs = addressing.addresses('AF_PACKET')
         discovery_networks = self.config.get('discovery_networks', {})
         bmc_mappings = self.__bmc_mappings()
-        template_data = {
+        tpl_data = {
             'host_node_class': host_node_class,
             'discovery_networks': [
                 {
@@ -316,7 +329,93 @@ class Application(ApplicationAPI):
             'rie_services': rie_services,
             'bmc_mappings': bmc_mappings,
         }
-        return template_data
+        return tpl_data
+
+    def __bmc_addressing_by_node_class(self, node_classes):
+        """Generate a node-class name to Virtual Blade addressing
+        dictionary based on discovery networks and node-class host
+        blade information.
+
+        """
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
+        virtual_networks = cluster.get_virtual_networks()
+        # Get the list of discovery Virtual Network names where
+        # Virtual Blades hosting BMC services may live so we can get
+        # the BMC information for each node.
+        discovery_network_names = [
+            network['network_name']
+            for _, network in self.config.get('discovery_networks', {}).items()
+            if network.get('network_name', None) is not None
+        ]
+        # Get the addressing for all of the BMC Virtual Blade classes
+        # hosting Virtual nodes. If the BMC for a given node class is
+        # not connected to a given network, the addressing on that
+        # network for the BMC will be None, so we should skip it. If
+        # the BMC for a given node class is one more than one
+        # discovery network, it should be okay just to take the last
+        # one we find.
+        bmc_addressing = {
+            node_class: virtual_networks.blade_class_addressing(
+                virtual_nodes.node_host_blade_info(
+                    node_class
+                )['blade_class'],
+                net_name
+            )
+            for node_class in node_classes
+            for net_name in discovery_network_names
+            if virtual_networks.blade_class_addressing(
+                virtual_nodes.node_host_blade_info(
+                    node_class
+                )['blade_class'],
+                net_name
+            ) is not None
+        }
+        # Check for and warn about any node_class that has a BMC
+        # Virtual Blade that is not connected to a Discovery Network,
+        # since those will be undiscoverable.
+        disconnected = [
+            node_class
+            for node_class in node_classes
+            if node_class not in bmc_addressing
+        ]
+        if disconnected:
+            warning_msg(
+                "the following node classes appear to have host Virtual "
+                "Blades that are not connected to a discovery network "
+                "and will not be discovered: '%s'" % "', '".join(disconnected)
+            )
+        return bmc_addressing
+
+    def __nid_from_class_instance(self, classes, class_name, instance):
+        """Calculate a NID from a list of node class names, the node's
+        node class name and the node class instance number.
+
+        """
+        # Sort the node_classes list so we get repeatable results from
+        # the same list of node classes whatever order they are in.
+        classes.sort()
+
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        if instance >= virtual_nodes.node_count(class_name):
+            # Invalid instance number bail out
+            raise ContextualError(
+                "instance number %d is out of range for node class '%s' which "
+                "has only %d instances configured" % (
+                    instance, class_name, virtual_nodes.node_count(class_name)
+                )
+            )
+        base_nid = 1
+        for current_class in classes:
+            if class_name == current_class:
+                return base_nid + instance
+            base_nid += virtual_nodes.node_count(current_class)
+        raise ContextualError(
+            "unrecognized node class '%s' requested from a node class list "
+            "containing '%s'" % (
+                class_name, "', '".join(classes)
+            )
+        )
 
     @staticmethod
     def __formatted_str_list(str_list):
@@ -340,42 +439,195 @@ class Application(ApplicationAPI):
             if str_list else ""
         )
 
-    def __template_data_quickstart(self):
-        """Construct the template data dictionary used for building
-        templated deployment files for the Quickstart Recipe mode of
-        deployment.
+    def __tpl_data_quadlet_nodes(self):
+        """Construct the 'nodes' element of the quadlet system
+        template data.
 
         """
-        return self.__template_data()
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
 
-    def __template_data_quadlet(self):
+        # We are going to go through the node classes and their
+        # instances assigning NID values to each node. To make this
+        # repeatable on a given config, sort the node class names so
+        # they come up in the same order every time.
+        managed_node_classes = [
+            node_class
+            for node_class in virtual_nodes.node_classes()
+            if virtual_nodes.application_metadata(node_class).get(
+                    'node_role', "management"
+            ) == "managed"
+        ]
+        bmc_addressing = self.__bmc_addressing_by_node_class(
+            managed_node_classes
+        )
+        bmc_instances = {
+            (node_class, instance): (
+                int(instance / virtual_nodes.node_host_blade_info(
+                    node_class
+                )['instance_capacity'])
+            )
+            for node_class in bmc_addressing.keys()
+            for instance in range(0, virtual_nodes.node_count(node_class))
+        }
+        return [
+            {
+                # Name here will be the node's name (i.e. domain name,
+                # not host name) which is also its xname
+                'name': virtual_nodes.node_node_name(node_class, instance),
+                # Hostname here will be the node's host name
+                'hostname': virtual_nodes.node_hostname(node_class, instance),
+                # NIDs are computed by sorting the node classes then
+                # running through each node class and counting its
+                # members. This is deterministic for a given config
+                # but not configurable.
+                'nid': self.__nid_from_class_instance(
+                    managed_node_classes, node_class, instance
+                ),
+                # We forced the node name of the node to be its xname
+                # during consolidate(), use the node name here...
+                'xname': virtual_nodes.node_node_name(node_class, instance),
+                'bmc_mac': addressing.address(
+                    'AF_PACKET', bmc_instances[(node_class, instance)]
+                ),
+                'bmc_ip':  addressing.address(
+                    'AF_INET', bmc_instances[(node_class, instance)]
+                ),
+                'cluster_net_interface': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'cluster_net_interface', ""
+                    )
+                ),
+                'management_net_interface': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'management_net_interface', ""
+                    )
+                ),
+                'node_class': node_class,
+                'node_group': (
+                    virtual_nodes.application_metadata(node_class).get(
+                        'node_group', node_class
+                    )
+                ),
+                'interfaces': [
+                    {
+                        'network_name': net_name,
+                        'mac_addr': virtual_nodes.node_class_addressing(
+                            node_class, net_name
+                        ).address('AF_PACKET', instance),
+                        'ip_addrs': [
+                            {
+                                'name': net_name,
+                                'ip_addr': virtual_nodes.node_class_addressing(
+                                    node_class, net_name
+                                ).address('AF_INET', instance),
+                            },
+                        ]
+                    }
+                    for net_name in virtual_nodes.network_names(node_class)
+                ],
+            }
+            for node_class, addressing in bmc_addressing.items()
+            for instance in range(0, virtual_nodes.node_count(node_class))
+        ]
+
+    def __tpl_data_quadlet_managed_macs(self):
+        """Get the list of MAC addresses for Manaaged Nodes on their
+        networks.
+
+        """
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
+        virtual_networks = cluster.get_virtual_networks()
+        return [
+            mac
+            for node_class in virtual_nodes.node_classes()
+            for net_name in virtual_networks.network_names()
+            for mac in (
+                    virtual_nodes.node_class_addressing(
+                        node_class, net_name
+                    ).addresses('AF_PACKET')
+                    if virtual_nodes.node_class_addressing(
+                            node_class, net_name
+                    ) is not None else []
+            )
+        ]
+
+    def __tpl_data_quadlet_hosting_cfg(self):
+        """Get the configuration for hosting nodes under management by
+        OpenCHAMI on this system. This includes the management network
+        IP setup, the management node IP and FQDN within the cluster,
+        whether or not libvirt hosting of a "Compute Node" on the
+        Management node is to be allowed (i.e. the tutorial use case),
+        and, if so, what the libvirt network setup is, and so forth.
+
+        XXX - these settings are hardcoded temporarily to allow them
+        to be used in templates. They need to be derived from config.
+
+        """
+        return {
+            'management': {
+                'enable': True,
+                'net_head_host': "demo",
+                'net_head_domain': "openchami.cluster",
+                'net_head_fqdn': "demo.openchami.cluster",
+                'net_head_ip': "10.2.1.2",
+                'cluster_net_dhcp_start': "10.2.1.32",
+                'cluster_net_dhcp_end': "10.2.1.254",
+                'cluster_net_cidr': "10.2.1.0/24",
+                'nat_if_cidr': "10.255.1.1/32",
+                # The IP address where the head-node's FQDN and
+                # external DNS are configured: normally the management
+                # network address of the first Virtual Blade hosting a
+                # management node.
+                'net_head_dns_server': "10.234.0.1",
+                'upstream_dns_server': "169.254.169.254",
+                'prefix_len': "24",
+                'netmask': "255.255.255.0",
+            },
+            'cohost': {
+                'enable': False,
+                'net_head_host': "cohost_gw",
+                'net_head_domain': "openchami.cluster",
+                'net_head_fqdn': "cohost_gw.openchami.cluster",
+                'net_head_ip': "172.16.0.254",
+                'prefix_len': "24",
+                'netmask': "255.255.255.0",
+            },
+        }
+
+    def __tpl_data_quadlet(self):
         """Construct the template data dictionary used for building
         templated deployment files for the Quadlet based mode of
         deployment.
 
         """
-        return self.__template_data()
+        tpl_data = self.__tpl_data()
+        tpl_data['nodes'] = self.__tpl_data_quadlet_nodes()
+        tpl_data['managed_macs'] = self.__tpl_data_quadlet_managed_macs()
+        tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
+        return tpl_data
 
-    def __template_data_bare(self):
+    def __tpl_data_bare(self):
         """Construct the template data dictionary used for building
         templated deployment files for the Bare System mode of
         deployment.
 
         """
-        return self.__template_data()
+        return self.__tpl_data()
 
-    def __choose_template_data(self):
+    def __choose_tpl_data(self):
         """Pick the appropriate template data for the configured mode of
         """
         try:
-            return self.template_data_calls[self.deploy_mode]()
+            return self.tpl_data_calls[self.deploy_mode]()
         except KeyError as err:
             raise ContextualError(
                 "unrecognized deployment mode '%s' configured - recognized "
                 "modes are: %s" % (
                     self.deploy_mode,
                     self.__formatted_str_list(
-                        list(self.template_data.keys())
+                        list(self.tpl_data.keys())
                     )
                 )
             )from err
@@ -411,7 +663,7 @@ class Application(ApplicationAPI):
                 )
             )
             with NamedTemporaryFile() as tmpfile:
-                render_template_file(source, self.template_data, tmpfile.name)
+                render_template_file(source, self.tpl_data, tmpfile.name)
                 connections.copy_to(
                     tmpfile.name, dest,
                     recurse=False, logname="upload-application-%s-to-%s" % (
@@ -435,12 +687,12 @@ class Application(ApplicationAPI):
     def consolidate(self):
         # Set up for preparing and shipping deployment files
         #
-        # Get the deployment mode from the config. Default to 'quickstart'.
+        # Get the deployment mode from the config. Default to 'quadlet'.
         self.deploy_mode = (
-            self.config.get('deployment', {}).get('mode', 'quickstart')
+            self.config.get('deployment', {}).get('mode', 'quadlet')
         )
         self.deployment_files = self.__choose_deployment_files()
-        self.template_data = self.__choose_template_data()
+        self.tpl_data = self.__choose_tpl_data()
 
         # Run through and remove any discovery network whose network
         # name is not defined in the cluster configuration.

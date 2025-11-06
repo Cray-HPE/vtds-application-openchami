@@ -1,5 +1,3 @@
-#! /usr/bin/bash
-#
 # MIT License
 #
 # (C) Copyright 2025 Hewlett Packard Enterprise Development LP
@@ -21,24 +19,37 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-set -e -o pipefail
+options:
+  layer_type: 'base'
+  name: 'rocky-base'
+  publish_tags: '9'
+  pkg_manager: 'dnf'
+  parent: 'scratch'
+  publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+  registry_opts_push:
+    - '--tls-verify=false'
 
-fail() {
-    echo $* >&2
-    exit 1
-}
+repos:
+  - alias: 'Rocky_9_BaseOS'
+    url: 'https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/'
+    gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
+  - alias: 'Rocky_9_AppStream'
+    url: 'https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/'
+    gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
 
-cd /root/deployment-recipes/quickstart || \
-    fail "can't chdir to '/root/deployment-recipes/quickstart'"
-source bash_functions.sh || \
-    fail "unable to load quickstart shell functions"
-get_ca_cert > cacert.pem || \
-    fail "unable to initialize SSL cert for access to hsm"
-ACCESS_TOKEN="$(gen_access_token)" || \
-    fail "unable to obtain access tokent for access to hsm"
-curl \
-    --cacert cacert.pem \
-    -H "Authorization: Bearer $ACCESS_TOKEN" \
-    https://foobar.openchami.cluster:8443/hsm/v2/State/Components | \
-    jq || \
-    fail "attempt to retrieve component state from hsm failed"
+package_groups:
+  - 'Minimal Install'
+  - 'Development Tools'
+
+packages:
+  - chrony
+  - cloud-init
+  - dracut-live
+  - kernel
+  - rsyslog
+  - sudo
+  - wget
+
+cmds:
+  - cmd: 'dracut --add "dmsquash-live livenet network-manager" --kver $(basename /lib/modules/*) -N -f --logfile /tmp/dracut.log 2>/dev/null'
+  - cmd: 'echo DRACUT LOG:; cat /tmp/dracut.log'

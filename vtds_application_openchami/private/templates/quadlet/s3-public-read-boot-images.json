@@ -1,5 +1,3 @@
-#! /usr/bin/bash
-#
 # MIT License
 #
 # (C) Copyright 2025 Hewlett Packard Enterprise Development LP
@@ -21,25 +19,14 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-set -e -o pipefail
-
-fail() {
-    echo $* >&2
-    exit 1
+{
+  "Version":"2012-10-17",
+  "Statement":[
+    {
+      "Effect":"Allow",
+      "Principal":"*",
+      "Action":["s3:GetObject"],
+      "Resource":["arn:aws:s3:::boot-images/*"]
+    }
+  ]
 }
-
-cd /root/deployment-recipes/quickstart || \
-    fail "can't chdir to '/root/deployment-recipes/quickstart'"
-docker compose \
-       -f base.yml \
-       -f internal_network_fix.yml \
-       -f postgres.yml \
-       -f jwt-security.yml \
-       -f haproxy-api-gateway.yml \
-       -f openchami-svcs.yml \
-       -f autocert.yml \
-       -f coredhcp.yml \
-       -f configurator.yml \
-       -f computes.yml \
-       up -d || \
-    fail "starting OpenCHAMI failed"

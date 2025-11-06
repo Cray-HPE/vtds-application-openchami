@@ -19,26 +19,42 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
+options:
+  layer_type: base
+  name: compute-base
+  publish_tags:
+    - 'rocky9'
+  pkg_manager: dnf
+  # XXX - needs templating of the boot image name / tag
+  parent: '{{ hosting_config.management.net_head_ip }}:5000/demo/rocky-base:9'
+  registry_opts_pull:
+    - '--tls-verify=false'
 
-# The 'nodes.yaml' file for use in static discovery of managed nodes.
-nodes:
-{%- for node in nodes %}
-- name: {{ node.name }}
-  nid: {{ node.nid }}
-  xname: {{ node.xname }}
-  bmc_mac: {{ node.bmc_mac }}
-  bmc_ip: {{ node.bmc_ip }}
-  groups:
-    - {{ node.node_group }}
-  interfaces:
-  {%- for interface in node.interfaces %}
-  {%- if interface.network_name == node.cluster_net_interface %}
-  - mac_addr: {{ interface.mac_addr }}
-    ip_addrs:
-    {%- for ip_addr in interface.ip_addrs %}
-    - name: {{ ip_addr.name }}
-      ip_addr: {{ ip_addr.ip_addr }}
-    {%- endfor %}
-  {%- endif %}
-  {%- endfor %}
-{%- endfor %}
+  # Publish SquashFS image to local S3
+  publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
+  s3_prefix: 'compute/base/'
+  s3_bucket: 'boot-images'
+
+  # Publish OCI image to container registry
+  #
+  # This is the only way to be able to re-use this image as
+  # a parent for another image layer.
+  publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+  registry_opts_push:
+    - '--tls-verify=false'
+
+repos:
+  - alias: 'Epel9'
+    url: 'https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/'
+    gpg: 'https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9'
+
+packages:
+  - boxes
+  - cowsay
+  - figlet
+  - fortune-mod
+  - git
+  - nfs-utils
+  - tcpdump
+  - traceroute
+  - vim

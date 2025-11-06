@@ -26,52 +26,75 @@
 # OpenCHAMI. This script is intended to be run by a user with
 # passwordless 'sudo' permissions. The base node preparation script
 # sets up the user 'rocky' with that before chaining here.
-set -e -o pipefail
 
-function fail() {
-    msg="$*"
-    echo "ERROR: ${msg}" >&2
-    exit 1
-}
+# Set up error handling, the environment and some functions for
+# running the "prepare" scripts...
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
+source "${SCRIPT_DIR}/openchami-files/prep_setup.sh"
 
-# Some useful variables that can be templated
-HEADNODE_FQDN="demo.openchami.cluster"
-LIBVIRT_HEADNODE_IP="172.16.0.254"
-LIBVIRT_NET_LENGTH="24"
-LIBVIRT_NET_MASK="255.255.255.0"  # Computed from length when tempated
-NMN_HEADNODE_IP="10.1.1.11"  # XXX - This needs to be discovered or templated
+# Get some image building functions into our environment
+source "${SCRIPT_DIR}/openchami-files/build-image.sh"
+
+# List the image builder configuration files to use for building the
+# base OS image, the compute node base image and the compute node
+# debug image.
+#
+# XXX - Once these are templated, we might want to rename the files to
+#       reflect their more generalized natures. For now this is
+#       accurate.
+IMAGE_BUILDERS=(
+    "rocky-base-9.yaml"
+    "compute-base-rocky9.yaml"
+    "compute-debug-rocky9.yaml"
+)
+
+ROCKY_DIRS=(
+    "/data/oci"
+    "/data/s3"
+    "/opt/workdir"
+)
+
+WORK_DIRS=(
+    "/opt/workdir/nodes"
+    "/opt/workdir/images"
+    "/opt/workdir/boot"
+    "/opt/workdir/cloud-init"
+)
+
+S3_PUBLIC_BUCKETS=(
+    "efi"
+    "boot-images"
+)
 
 # Create the directories that are needed for deployment and must be
 # made by 'root'
-for dir in /data/oci /data/s3 /opt/workdir; do
+for dir in "${ROCKY_DIRS[@]}"; do
     echo "Making directory: ${dir}"
     sudo mkdir -p "${dir}"
     sudo chown -R rocky: "${dir}"
 done
 
-# Make the directories that are needed for deployment and can be made by rocky
-for dir in /opt/workdir/nodes /opt/workdir/images /opt/workdir/boot /opt/workdir/cloud-init; do
+# Make the directories that are needed for deployment and can be made
+# by rocky
+for dir in "${WORK_DIRS[@]}"; do
     echo "Making directory: ${dir}"
-    mkdir -p '${dir}'
+    mkdir -p "${dir}"
 done
 
 # Turn on IPv4 forwarding on the management node to allow other nodes
 # to reach OpenCHAMI services
 sudo sysctl -w net.ipv4.ip_forward=1
 
+{%- if hosting_config.cohost.enable %}
 # Create a virtual bridged network within libvirt to act as the node
 # local network used by OpenCHAMI services.
-#
-# XXX - Creation of this should be templated and configurable, as
-#       should the network IP and the head node IP.
 echo "Setting up libvirt bridge network for OpenCHAMI"
 cat <<EOF > openchami-net.xml
 <network>
   <name>openchami-net</name>
   <bridge name="virbr-openchami" />
   <forward mode='route'/>
-   <ip address="${LIBVIRT_HEADNODE_IP}" netmask="${LIBVIRT_NET_MASK}">
-   </ip>
+  <ip address="${LIBVIRT_NET_IP}" netmask="${LIBVIRT_NET_MASK}" />
 </network>
 EOF
 sudo virsh net-destroy openchami-net || true
@@ -80,12 +103,12 @@ sudo virsh net-define openchami-net.xml
 sudo virsh net-start openchami-net
 sudo virsh net-autostart openchami-net
 
-# Set up an /etc/hosts entry for the OpenCHAMI head node so we can use
-# it for certs and for reaching the services.
-#
-# XXX - This should be templated so it is configurable, both IP and FQDM
-echo "Adding head node (${LIBVIRT_HEADNODE_IP}) to /etc/hosts"
-echo "${LIBVIRT_HEADNODE_IP} ${HEADNODE_FQDN}" | sudo tee -a /etc/hosts > /dev/null
+{%- endif %}
+# Set up an /etc/hosts entry for the OpenCHAMI management head node so
+# we can use it for certs and for reaching the services.
+echo "Adding head node (${MANAGEMENT_HEADNODE_IP}) to /etc/hosts"
+echo "${MANAGEMENT_HEADNODE_IP} ${MANAGEMENT_HEADNODE_FQDN}" | \
+    sudo tee -a /etc/hosts > /dev/null
 
 # Set up the quadlet container definition to launch minio as an S3 server
 echo "Setting up minio container for quadlet service"
@@ -108,6 +131,7 @@ sudo systemctl start registry.service
 #
 # XXX - the VERSION here should be templated and configurable
 echo "Finding OpenCHAMI RPM"
+cd /opt/workdir
 OWNER="openchami"
 REPO="release"
 OPENCHAMI_VERSION="latest"
@@ -129,6 +153,13 @@ if systemctl status openchami.target; then
 fi
 sudo rpm -Uvh --reinstall "$rpm_name"
 
+# Patch a bug in the coresmd-coredns container file...
+patch_coredns
+
+# Set up the configuration for Core-SMD CoreDNS
+echo "Setting up Core-SMD CoreDNS"
+sudo cp "${SCRIPT_DIR}/openchami-files/Corefile" /etc/openchami/configs/Corefile
+
 # Set up the CoreDHCP configuration to support network booting Compute Nodes
 echo "Setting up CoreDHCP Configuration"
 sudo cp /root/coredhcp.yaml /etc/openchami/configs/coredhcp.yaml
@@ -137,7 +168,7 @@ sudo cp /root/coredhcp.yaml /etc/openchami/configs/coredhcp.yaml
 #
 # XXX - this needs to be templated to use the configured FQDN of the head node
 echo "Setting up cluster SSL certs for OpenCHAMI"
-sudo openchami-certificate-update update demo.openchami.cluster
+sudo openchami-certificate-update update "${MANAGEMENT_HEADNODE_FQDN}"
 
 # Start OpenCHAMI
 echo "Starting OpenCHAMI"
@@ -156,4 +187,192 @@ sudo dnf install -y ./ochami.rpm
 # XXX- This needs to be templated to use the configured FQDN of the head node
 echo "Configuring OpenCHAMI CLI (ochami) Client"
 sudo rm -f /etc/ochami/config.yaml
-echo y | sudo ochami config cluster set --system --default demo cluster.uri "https://demo.openchami.cluster:8443" || fail "failed to configure OpenCHAMI CLI"
+echo y | sudo ochami config cluster set --system --default demo \
+              cluster.uri "https://${MANAGEMENT_HEADNODE_FQDN}:8443" \
+    || fail "failed to configure OpenCHAMI CLI"
+
+# Copy the application data files into their respective places so we are
+# ready to build and boot compute nodes.
+#
+# Copy the static node discovery inventory into place
+cp "${SCRIPT_DIR}/openchami-files/nodes.yaml" /opt/workdir/nodes/nodes.yaml
+
+# Set up the 'rocky' user's S3 configuration
+cp "${SCRIPT_DIR}/openchami-files/s3cfg" ~/.s3cfg
+
+# Copy the S3 publicly readable EFI and Boot file settings into place
+cp "${SCRIPT_DIR}"/openchami-files/s3-public-read-* /opt/workdir/
+
+# Move the image builder configurations into place
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    cp "${SCRIPT_DIR}/openchami-files/${builder}" /opt/workdir/images/"${builder}"
+done
+
+# Add the image builder functions to the bash default environment for
+# future use
+sudo cp "${SCRIPT_DIR}/openchami-files/build-image.sh" /etc/profile.d/build-image.sh
+
+# All the vTDS constructed files have been installed in their
+# respective locations, time to set things up and build some images.
+#
+# The first thing we need is credentials to interact with
+# OpenCHAMI. Since OpenCHAMI just came up, this might not work the
+# first time, so retry a few times.
+for i in {1..10}; do
+    get-ochami-token || DEMO_ACCESS_TOKEN=""
+    if [[ "${DEMO_ACCESS_TOKEN}" != "" ]]; then
+        break
+    fi
+    sleep 10
+done
+[[ "${DEMO_ACCESS_TOKEN}" != "" ]] || fail "cannot get openchami access token"
+
+# Wait for SMD to be up and running. This can sometimes take a little
+# while. If it takes more than 100 seconds, something is probably
+# wrong.
+smd_running=false
+for i in {1..10}; do
+    if ochami smd component get > /dev/null 2>&1; then
+        smd_running=true
+        break
+    fi
+    sleep 10
+done
+if ! ${smd_running}; then
+    fail "timeout waiting for SMD to start, openChami is not fully available"
+fi
+
+# Run the static node discovery (first delete any previously existing content)
+if [[ "$(ochami smd component get | jq ".Components | length")" -gt 0 ]]; then
+    echo y | ochami smd component delete --all
+    echo y | ochami smd compep delete --all
+    echo y | ochami smd iface delete --all
+    echo y | ochami smd rfe delete --all
+    echo y | ochami smd group delete --all
+    echo
+fi
+ochami discover static $(discovery_version) -f yaml -d @/opt/workdir/nodes/nodes.yaml
+
+# Install and configure 'regctl'
+curl -L https://github.com/regclient/regclient/releases/latest/download/regctl-linux-amd64 > regctl \
+    && sudo mv regctl /usr/local/bin/regctl \
+    && sudo chmod 755 /usr/local/bin/regctl
+/usr/local/bin/regctl registry set --tls disabled "${MANAGEMENT_HEADNODE_FQDN}:5000"
+
+# Install and configure S3 client
+for bucket in "${S3_PUBLIC_BUCKETS[@]}"; do
+    s3cmd ls | grep s3://"${bucket}" && s3cmd rb -r s3://"${bucket}"
+    s3cmd mb s3://"${bucket}"
+    s3cmd setacl s3://"${bucket}" --acl-public
+    s3cmd setpolicy /opt/workdir/s3-public-read-"${bucket}".json \
+          s3://"${bucket}" \
+          --host="${MANAGEMENT_HEADNODE_IP}:9000" \
+          --host-bucket="${MANAGEMENT_HEADNODE_IP}:9000"
+done
+
+# Build the Base Image
+echo "Building the Common Base OS Image"
+build-image /opt/workdir/images/rocky-base-9.yaml
+
+# Build the Compute Node Base Image
+echo "Building the Compute Node Base OS image"
+build-image /opt/workdir/images/compute-base-rocky9.yaml
+
+# Build the Compute Node Debug Image
+echo "Building the Compute Node Debug OS image"
+build-image /opt/workdir/images/compute-debug-rocky9.yaml
+
+# Make sure coresmd-coredns is running by now. If it is not, we have a
+# problem and we don't want to switch over to it...
+systemctl is-active --quiet coresmd-coredns.service || \
+    fail "coresmd-coredns is not active, ivestigate why not and try again"
+
+# Switch to coresmd-coredns as the nameserver
+echo "Switching to the cluster internal DNS nameserver"
+switch_dns "${MANAGEMENT_HEADNODE_IP}" "${CLUSTER_DOMAIN}"
+
+# Refresh ochami token after the image builds in case it expired
+export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
+
+# Create the boot configuration for the Compute node Debug image
+echo "Creating the debug boot configuration"
+cd /opt/workdir/boot
+generate-boot-config \
+    "compute/debug" \
+    "${MANAGEMENT_HEADNODE_IP}" \
+    $(managed_macs) | \
+    tee /opt/workdir/boot/boot-compute-debug.yaml
+
+# Create the boot configuration for the Compute node Base image
+echo "Creating the base boot configuration"
+cd /opt/workdir/boot
+generate-boot-config \
+    "compute/base" \
+    "${MANAGEMENT_HEADNODE_IP}" \
+    $(managed_macs) | \
+    tee /opt/workdir/boot/boot-compute-base.yaml
+
+# Install the boot configuration for the debug kernel
+echo "Install boot configuration"
+ochami bss boot params set -f yaml \
+       -d @/opt/workdir/boot/boot-compute-debug.yaml
+
+# Set up cloud-init for some basics...
+#
+# First the global cloud-init metadata
+# XXX - Need some templating here...
+rm -f ~/.ssh/id_rsa*
+ssh-keygen -t rsa -q -f ~/.ssh/id_rsa -N ""
+mkdir -p /opt/workdir/cloud-init
+cat <<EOF | tee /opt/workdir/cloud-init/ci-defaults.yaml
+---
+base-url: "http://${MANAGEMENT_HEADNODE_IP}:8081/cloud-init"
+cluster-name: "demo"
+nid-length: 3
+public-keys:
+  - "$(cat ~/.ssh/id_rsa.pub)"
+short-name: "nid"
+EOF
+ochami cloud-init defaults set -f yaml \
+       -d @/opt/workdir/cloud-init/ci-defaults.yaml
+
+# Next the cloud init metadata for the managed node groups...
+for group in $(node_groups); do
+    cat <<EOF | tee /opt/workdir/cloud-init/ci-group-"${group}".yaml
+- name: ${group}
+  description: "${group} group config"
+  file:
+    encoding: plain
+    content: |
+      ## template: jinja
+      #cloud-config
+      merge_how:
+      - name: list
+        settings: [append]
+      - name: dict
+        settings: [no_replace, recurse_list]
+      users:
+        - name: testuser
+          ssh_authorized_keys: {{ "{{ ds.meta_data.instance_data.v1.public_keys }}" }}
+        - name: root
+          ssh_authorized_keys: {{ "{{ ds.meta_data.instance_data.v1.public_keys }}" }}
+      disable_root: false
+EOF
+    ochami cloud-init group set -f yaml \
+           -d @/opt/workdir/cloud-init/ci-group-"${group}".yaml
+done
+{%- for node in nodes %}
+ochami cloud-init node set \
+       -d '[{"id":"{{ node.xname }}","local-hostname":"{{ node.hostname}} "}]'
+{%- endfor %}
+
+# Now that all the images are in place, cloud-init is set up and the
+# managed nodes have been configured, go through and start them all
+# using RedFish curls.
+#
+# XXX - we need to add BMC user and BMC password to these actions, get
+#       from config and add to template. Then pick up here as the
+#       third and fourth args to 'power-on-node'
+{%- for node in nodes %}
+power-on-node "{{ node.xname }}" "{{ node.bmc_ip }}"
+{%- endfor %}

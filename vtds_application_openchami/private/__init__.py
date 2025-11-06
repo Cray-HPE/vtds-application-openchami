@@ -52,75 +52,9 @@ def home(filename):
     return path_join(separator, "root", filename)
 
 
-# Templated files to be deployed to the managment node: (source, dest,
+# Templated files to be deployed to the management node: (source, dest,
 # mode, tag, run)
 #
-# Management node files for the Quickstart recipe deployment mode
-QUICKSTART_MANAGEMENT_NODE_FILES = [
-    (
-        template('quickstart/magellan_discovery_dockerfile'),
-        home('magellan_discovery_dockerfile'),
-        '644',
-        'magellan-discovery-dockerfile',
-        False
-    ),
-    (
-        template('quickstart/magellan_discovery.sh'),
-        home('magellan_discovery.sh'),
-        '755',
-        'magellan_discovery_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Stage1-Deploy.sh'),
-        home('OpenCHAMI-Stage1-Deploy.sh'),
-        '755',
-        'OpenCHAMI_Stage1_Deploy_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Stage2-Deploy.sh'),
-        home('OpenCHAMI-Stage2-Deploy.sh'),
-        '755',
-        'OpenCHAMI_Stage2_Deploy_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Prepare.sh'),
-        home('OpenCHAMI-Prepare.sh'),
-        '755',
-        'OpenCHAMI_Prepare_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Remove.sh'),
-        home('OpenCHAMI-Remove.sh'),
-        '755',
-        'OpenCHAMI_Remove_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Logs.sh'),
-        home('OpenCHAMI-Logs.sh'),
-        '755',
-        'OpenCHAMI_Logs_script',
-        False,
-    ),
-    (
-        template('quickstart/OpenCHAMI-Show.sh'),
-        home('OpenCHAMI-Show.sh'),
-        '755',
-        'OpenCHAMI_Show_script',
-        False,
-    ),
-    (
-        template('quickstart/prepare_node.sh'),
-        home('prepare_node.sh'),
-        '755',
-        'node_prepare_script',
-        True,
-    ),
-]
 # Management node files for the bare system deployment mode
 BARE_MANAGEMENT_NODE_FILES = [
     (
@@ -155,10 +89,94 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
+        template('quadlet/Corefile'),
+        home('Corefile'),
+        '644',
+        'coredns_runtime_config',
+        False,
+    ),
+    (
+        template('quadlet/containers.conf'),
+        home('containers.conf'),
+        '644',
+        'local_podman_configuration',
+        False,
+    ),
+    (
+        template('quadlet/nodes.yaml'),
+        home('nodes.yaml'),
+        '644',
+        'manual_node_discovery_data',
+        False,
+    ),
+    (
+        template('quadlet/s3cfg'),
+        home('s3cfg'),
+        '644',
+        'rocky_user_s3_configuration_file',
+        False,
+    ),
+    (
+        template('quadlet/s3-public-read-boot-images.json'),
+        home('s3-public-read-boot-images.json'),
+        '644',
+        's3_boot_file_location_information',
+        False,
+    ),
+    (
+        template('quadlet/s3-public-read-efi.json'),
+        home('s3-public-read-efi.json'),
+        '644',
+        's3_efi_location_information',
+        False,
+    ),
+    (
+        template('quadlet/rocky-base-9.yaml'),
+        home('rocky-base-9.yaml'),
+        '644',
+        'rocky_base_compute_node_builder_specification',
+        False,
+    ),
+    (
+        template('quadlet/compute-base-rocky9.yaml'),
+        home('compute-base-rocky9.yaml'),
+        '644',
+        'compute_node_image_builder_specification',
+        False,
+    ),
+    (
+        template('quadlet/compute-debug-rocky9.yaml'),
+        home('compute-debug-rocky9.yaml'),
+        '644',
+        'compute_node_debug_image_builder_specification',
+        False,
+    ),
+    (
+        template('quadlet/build-image.sh'),
+        home('build-image.sh'),
+        '644',
+        'image_builder_shell_functions_library',
+        False,
+    ),
+    (
+        template('quadlet/boot-compute-debug.yaml'),
+        home('boot-compute-debug.yaml'),
+        '644',
+        'debug_kernel_boot_params',
+        False,
+    ),
+    (
         template('quadlet/OpenCHAMI-Prepare.sh'),
         home('OpenCHAMI-Prepare.sh'),
         '755',
-        'open-chami-prepare-script',
+        'open_chami_prepare_script',
+        False,
+    ),
+    (
+        template('quadlet/prep_setup.sh'),
+        home('prep_setup.sh'),
+        '644',
+        'node_prepare_setup_library',
         False,
     ),
     (
@@ -203,7 +221,6 @@ BLADE_FILES = [
 ]
 
 deployment_files = {
-    'quickstart': (BLADE_FILES, QUICKSTART_MANAGEMENT_NODE_FILES),
     'bare': (BLADE_FILES, BARE_MANAGEMENT_NODE_FILES),
     'quadlet': (BLADE_FILES, QUADLET_MANAGEMENT_NODE_FILES),
 }
