@@ -2,16 +2,21 @@
 
 This vTDS Application Layer implementation configures, installs and
 deploys the OpenCHAMI system management application on a vTDS Cluster
-using the
-[QuickStart Deployment Recipe for OpenCHAMI](https://github.com/OpenCHAMI/deployment-recipes/blob/main/quickstart/README.md).
+using procedures derived from the
+[2025 OpenCHAMI Tutorial](https://github.com/OpenCHAMI/tutorial-2025).
 
 ## Description
 
 This is an Application Layer implementation for vTDS that contains the
-code and base configuration needed to deploy a simple Docker Compose
-hosted OpenCHAMI control plane onto a vTDS Virtual Node using the
-procedure outlined in the
-[QuickStart Deployment Recipe for OpenCHAMI](https://github.com/OpenCHAMI/deployment-recipes/blob/main/quickstart/README.md).
+code and base configuration needed to deploy a Quadlet based
+deployment of the OpenCHAMI control plane onto a mmanagement node and
+set of managed (compute) nodes onto vTDS Virtual Blades, using vTDS
+Virtual Nodes and a procedure derived from the [2025 OpenCHAMI
+Tutorial](https://github.com/OpenCHAMI/tutorial-2025), or,
+alternatively, to deploy a bare management node that has been prepared
+to allow users to follow the 2025 OpenCHAMI Tutorial manually. This
+latter system also has compute nodes defined, but they are not started
+upon deployment.
 
 For an overview of vTDS see the
 [vTDS Core Description](https://github.com/Cray-HPE/vtds-core/blob/main/README.md)
@@ -159,7 +164,7 @@ environment should be sufficient.
 It is a good idea to validate your vTDS configuration to make sure it
 is working properly before you start deploying your vTDS cluster. You
 can do this using the `vtds validate` command. If that command runs
-and finishes without errors, your configuration is set up
+and finishes without errors, your configuration is generally set up
 correctly. If it fails to run, go back and make sure you are still
 logged into GCP, then try again.
 
@@ -187,7 +192,7 @@ directory, with the virtual environment activated use
 vtds deploy
 ```
 
-This should take about 25 minutes or so to complete. It will produce
+This should take about 40 minutes or so to complete. It will produce
 some output, including some INFO messages that might look
 surprising. If it ends without producing an ERROR message, your
 OpenCHAMI on vTDS system is deployed and ready for use.
@@ -216,9 +221,9 @@ Virtual Blade will be a GCP instance and it will be called
 gcloud compute --project hpe-openchami-tilly-3724 ssh --tunnel-throug-iap root@host-blade-001 
 ```
 
-Third you need to log into the Virtual Node from the Virtual Blade
-using SSH. Again, if you did not change the Cluster Layer
-configuration, then that Virtual Node is named `management-001`:
+Third you need to log into the management Virtual Node from the
+Virtual Blade using SSH. Again, if you did not change the Cluster
+Layer configuration, then that Virtual Node is named `management-001`:
 
 ```
 ssh management-001
@@ -243,15 +248,11 @@ section outlines some settings you might want to make on your system.
 
 #### Adding Compute Virtual Nodes
 
-By default, OpenCHAMI on vTDS has no actual compute nodes. All of the
-nodes that show up in SMD are emulated by the Redfish Interface
-Emulator (RIE) which is configured to generate 4 emulated BMCs each
-containing a single emulated RedFish `Systems` endpoint.
-
-OpenCHAMI on vTDS also supports "real" compute nodes implemented as
-vTDS Virtual Nodes and managed by their own RedFish server(s) that run
-on the respective vTDS Virtual Blade(s). Up to 4 compute Virtual Nodes
-are available simply by editing this section of the standard Core
+By default, OpenCHAMI on vTDS has no actual compute nodes.  OpenCHAMI
+on vTDS supports "real" compute nodes implemented as vTDS Virtual
+Nodes and managed by their own RedFish server(s) that run on the
+respective vTDS Virtual Blade(s). Up to 4 compute Virtual Nodes are
+available simply by editing this section of the standard Core
 Configuration file:
 
 ```
@@ -278,8 +279,8 @@ A Virtual Blade in the standard configuration of OpenCHAMI on vTDS
 supports up to 4 compute nodes and up to 1 management node. If you
 want more than 4 compute nodes, you will need to increase the number
 of Virtual Blades in your system by 1 for every 4 additional compute
-nodes you need. You can do this by adjusting this section of the Core
-Configuration file:
+nodes you need (up to 4 virtual blades and 16 virtual nodes). You can
+do this by adjusting this section of the Core Configuration file:
 
 ```
   virtual_blades:
@@ -296,7 +297,10 @@ Configuration file:
       count: 1
 ```
 
-and setting the `host-blade` Virtual Blade count to the number of blades required to support your additional compute nodes. For example, if you wanted 12 compute nodes, you would need 3 `host-blade` Virtual Blades:
+and setting the `host-blade` Virtual Blade count to the number of
+blades required to support your additional compute nodes. For example,
+if you wanted 12 compute nodes, you would need 3 `host-blade` Virtual
+Blades:
 
 ```
   virtual_blades:
@@ -313,41 +317,118 @@ and setting the `host-blade` Virtual Blade count to the number of blades require
       count: 3
 ```
 
-#### Redfish Interface Emulator (RIE) Endpoints
+### Basic Interaction with OpenCHAMI on vTDS
 
-By default, the standard OpenCHAMI on vTDS configuration establishes 4
-RIE emulated BMCs and one RIE emulated node per emulated BMC. The RIE BMCs are enumerated by their service names:
+#### The `rocky` User
 
-- rf-x0c0s1b0:
-- rf-x0c0s2b0:
-- rf-x0c0s3b0:
-- rf-x0c0s4b0:
+There is a user named `rocky` configured on the OpenCHAMI management
+node. To become `rocky` first log in as `root` on the management node
+as described [above](#log-into-your-virtual-node). Next use `su -
+rocky` to become `rocky`. This user is the user that is set up to
+interact with OpenCHAMI through the `ochami` CLI and to manage S3 and
+registry storage.
 
-Their configuration can be found in the
-[base configuration](https://github.com/Cray-HPE/vtds-application-openchami/blob/main/vtds_application_openchami/private/config/config.yaml)
-for this application layer.
+To obtain an auth token for use with `ochami` use the built-in
+`get-ochami-token` shell function that vTDS provides.
 
-To delete one or more of these RIE services from your OpenCHAMI
-cluster, you can simply set the `delete` value in each one you want to
-delete to `true` in your Core Configuratino file. For example, to
-delete all of them, add the following to your Core Configuration:
+#### Compute Node Host Names
+
+Your compute nodes will have both XNAMEs and NID names in the following pattern:
+
+| XNAME | NID Name |
+|---|---|
+| x2000c0s0b0n0 | nid-001 |
+| x2000c0s0b0n1 | nid-002 |
+| x2000c0s0b0n2 | nid-003 |
+| x2000c0s0b0n3 | nid-004 |
+| x2000c0s0b1n0 | nid-005 |
+| x2000c0s0b1n1 | nid-006 |
+| x2000c0s0b1n2 | nid-007 |
+| x2000c0s0b1n3 | nid-008 |
+| x2000c0s0b2n0 | nid-009 |
+| x2000c0s0b2n1 | nid-010 |
+| x2000c0s0b2n2 | nid-011 |
+| x2000c0s0b2n3 | nid-012 |
+| x2000c0s0b3n0 | nid-013 |
+| x2000c0s0b3n1 | nid-014 |
+| x2000c0s0b3n2 | nid-015 |
+| x2000c0s0b3n3 | nid-016 |
+
+You can reach them as the `rocky` user on the management node using
+SSH to either the `root` user or the `testuser` user. For example,
 
 ```
-application:
-  rie_services:
-    rf-x0c0s1b0:
-      delete: true
-    rf-x0c0s2b0:
-      delete: true
-    rf-x0c0s3b0:
-      delete: true
-    rf-x0c0s4b0:
-      delete: true
+$ ssh root@nid-001
 ```
 
-You are also welcome to add or modify services, but that is beyond
-this getting started guide. If you do add or modify services, make
-sure their names do not conflict with the xnames configured for Virual
-Node compute nodes configured in your OpenCHAMI cluster layer
-configuration.  You can see your complete config using `vtds
-show_config` to verify this.
+or
+```
+$ ssh root@x2000c0s0b0n0
+```
+
+will log you in as the `root` user on the first compute node.
+
+#### Redfish Hostnames
+
+OpenCHAMI on vTDS provides RedFish control of managed nodes via a
+RedFish server running on the Virtual Blades. The virtual blades are
+named using their XNAMEs and host the following managed nodes:
+
+| Virtual Blade XNAME | Managed Nodes |
+|---|---|
+| x0c0s0b0 | nid-001 through nid-004 |
+| x0c0s0b1 | nid-005 through nid-008 |
+| x0c0s0b2 | nid-009 through nid-012 |
+| x0c0s0b3 | nid-0013 through nid-016 |
+
+When logged into the management node as the `rocky` user you can use
+some built-in shell functions to manipulate the nodes via RedFish curl
+commands:
+
+- `restart-node <node-XNAME> <blade-XNAME>` uses the RedFish
+  `ForceRestart` operation to reset a managed node.
+
+- `power-on-node <node-XNAME> <blade-XNAME>` uses the RedFish `On`
+  operation to power on a managed node.
+
+- `power-off-node <node-XNAME> <blade-XNAME>` uses the RedFish `ForceOff`
+  operation to power off a managed node.
+
+For example:
+
+```
+$ restart-node x2000c0s0b0n0 x2000c0s0b0
+```
+
+will restart `nid-001`.
+
+#### Console Access to Managed Nodes
+
+If you want to watch your nodes boot, you will need to get onto the
+console of your nodes. This is currently available using the `virsh
+console` command and the XNAME of the managed node you want to connect
+to while running on the Virtual Blade. Log into the virtual blade (not
+the management node) hosting the managed node as shown
+[above](#log-into-your-virtual-node) and run the `virsh console`
+command. For example:
+
+```
+# virsh console x2000c0s0b0n0
+```
+
+will get you onto the console of `nid-001`. Be aware that resetting
+the node will drop you off of the console and that the console is only
+available when the node is powered on. The `virsh console` command
+will issue an error indicating that the console is unavailable if the
+node is powered off or in the process of resetting.
+
+For your reference, assuming you don't change the instance names in
+the configuration, the GCP instance names map to Virtual Blade XNAMEs
+as follows:
+
+| Instance Name | Blade XNAME |
+|---|---|
+| host-blade-001| x2000c0s0b0 |
+| host-blade-002| x2000c0s0b1 |
+| host-blade-003| x2000c0s0b2 |
+| host-blade-004| x2000c0s0b3 |
