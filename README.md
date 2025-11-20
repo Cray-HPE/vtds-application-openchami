@@ -36,7 +36,7 @@ which uses the
 an
 [Ubuntu Virtual Blade based Platform Layer implementation](https://github.com/Cray-HPE/vtds-platform-ubuntu/blob/main/README.md),
 a
-[KVM Based Cluster Layer implementaion](https://github.com/Cray-HPE/vtds-cluster-kvm/blob/main/README.md)
+[KVM Based Cluster Layer implementation](https://github.com/Cray-HPE/vtds-cluster-kvm/blob/main/README.md)
 , and this OpenCHAMI Application Layer implementation.
 
 ### Prepare Your System to Run vTDS Commands
