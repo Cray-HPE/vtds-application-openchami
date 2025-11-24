@@ -417,6 +417,22 @@ class Application(ApplicationAPI):
             )
         )
 
+    def __node_classes_by_role(self, role):
+        """Get the list of node classes within the specified
+        'role'. The 'role' can be 'managed' or 'management'. A node
+        class without a specified role is assumed to be 'management'.
+
+        """
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
+        return [
+            node_class
+            for node_class in virtual_nodes.node_classes()
+            if virtual_nodes.application_metadata(node_class).get(
+                    'node_role', "management"
+            ) == role
+        ]
+
     @staticmethod
     def __formatted_str_list(str_list):
         """Format a friendly string for use with errors that lists
@@ -451,13 +467,7 @@ class Application(ApplicationAPI):
         # instances assigning NID values to each node. To make this
         # repeatable on a given config, sort the node class names so
         # they come up in the same order every time.
-        managed_node_classes = [
-            node_class
-            for node_class in virtual_nodes.node_classes()
-            if virtual_nodes.application_metadata(node_class).get(
-                    'node_role', "management"
-            ) == "managed"
-        ]
+        managed_node_classes = self.__node_classes_by_role('managed')
         bmc_addressing = self.__bmc_addressing_by_node_class(
             managed_node_classes
         )
@@ -684,7 +694,81 @@ class Application(ApplicationAPI):
                     info_msg("running '%s' on host-blade(s)" % cmd)
                 connections.run_command(cmd, "run-%s-on" % tag)
 
+    def __set_node_xnames(self):
+        """Compute and fill in XNAME node names for all nodes on
+        Virtual Blades that host managed nodes. Managed node xnames
+        come first to keep their node numbering consistent on all
+        blades. Non-managed nodes come last, since it is less
+        important to be able to predict their node numbering.
+
+        """
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        node_classes = (
+            self.__node_classes_by_role('managed') +
+            self.__node_classes_by_role('management')
+        )
+        host_blades = {
+            node_class: virtual_nodes.node_host_blade_info(node_class)
+            for node_class in node_classes
+        }
+
+        # Collect a set of unique blade classes that are actually in use...
+        blade_classes = {
+            blade_info['blade_class']
+            for _, blade_info in host_blades.items()
+        }
+
+        # Set up a blade_class to XNAME list dictionary for all of the
+        # blade classes we are going to see.
+        blade_xnames = {
+            blade_class: virtual_blades.application_metadata(blade_class).get(
+                'xnames', []
+            )
+            # Use a set here to get one instance of each host blade class
+            for blade_class in blade_classes
+        }
+
+        # Initialize a dictionary of blade xnames to the next available
+        # node number on the blade for each blade in the list of
+        # virtual blades hosting nodes on the system.
+        xname_slots = {
+            xname: 0
+            for _, xnames in blade_xnames.items()
+            for xname in xnames
+        }
+        # Compute the node xnames for each node and register it with
+        # the cluster layer.
+        for node_class, blade_info in host_blades.items():
+            bl_xnames = blade_xnames[blade_info['blade_class']]
+            capacity = int(blade_info['instance_capacity'])
+            for instance in range(0, virtual_nodes.node_count(node_class)):
+                bl_index = int(instance / capacity)
+                if bl_index > len(bl_xnames):
+                    raise ContextualError(
+                        "not enough blade xnames are configured for virtual "
+                        "blade class '%s' to host %d instances of node class "
+                        "'%s', please update the provider configuration with "
+                        "additional blade xnames" % (
+                            blade_info['blade_class'],
+                            virtual_nodes.node_count(node_class),
+                            node_class
+                        )
+                    )
+                blade_xname = bl_xnames[bl_index]
+                node_number = xname_slots[blade_xname]
+                xname_slots[blade_xname] += 1
+                node_xname = "%sn%d" % (blade_xname, node_number)
+                virtual_nodes.set_node_node_name(
+                    node_class, instance, node_xname
+                )
+
     def consolidate(self):
+        # Before preparing to ship files, make sure that the node
+        # xnames have been installed in the cluster layer for us to
+        # use.
+        self.__set_node_xnames()
+
         # Set up for preparing and shipping deployment files
         #
         # Get the deployment mode from the config. Default to 'quadlet'.
