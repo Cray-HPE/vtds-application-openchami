@@ -796,15 +796,6 @@ class Application(ApplicationAPI):
         # use.
         self.__set_node_xnames()
 
-        # Set up for preparing and shipping deployment files
-        #
-        # Get the deployment mode from the config. Default to 'quadlet'.
-        self.deploy_mode = (
-            self.config.get('deployment', {}).get('mode', 'quadlet')
-        )
-        self.deployment_files = self.__choose_deployment_files()
-        self.tpl_data = self.__choose_tpl_data()
-
         # Run through and remove any discovery network whose network
         # name is not defined in the cluster configuration.
         virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
@@ -854,6 +845,16 @@ class Application(ApplicationAPI):
             raise ContextualError(
                 "cannot deploy an unprepared application, call prepare() first"
             )
+        # Set up for preparing and shipping deployment files
+        #
+        # Get the deployment mode from the config. Default to 'quadlet'.
+        self.deploy_mode = (
+            self.config.get('deployment', {}).get('mode', 'quadlet')
+        )
+        self.deployment_files = self.__choose_deployment_files()
+        self.tpl_data = self.__choose_tpl_data()
+
+        # Deploy the application to the cluster
         blade_files, management_node_files = self.deployment_files
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
         with virtual_blades.ssh_connect_blades() as connections:
