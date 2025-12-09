@@ -23,19 +23,17 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 set -e -o pipefail
 
-function find_if_by_cidr() {
-    addr=${1}; shift || fail "no CIDR supplied when looking up ip interface"
+function find_if_by_addr() {
+    addr=${1}; shift || fail "no ip addr supplied when looking up ip interface"
     ip --json a | \
         jq -r "\
           .[] | .ifname as \$ifname | \
           .addr_info | .[] | \
               select( .family == \"inet\") | \
-              select( (.local + \"/\" + ( .prefixlen | tostring)) == \"${addr}\" ) | \
+              select( (.local) == \"${addr}\" ) | \
               \"\(\$ifname)\" \
         "
 }
-
-# Find the interface on which NAT is running and the 
 
 # Create the directory in /etc where all of the Sushy Tools setup will
 # go.
@@ -102,9 +100,8 @@ fi
 
 # Set up NAT on the blade's public IP if this is the NAT blade
 # (i.e. the blade hosting the management node)
-NAT_CIDR="{{ hosting_config.management.nat_if_cidr }}"
-NAT_ADDR="$(echo "${NAT_CIDR}" | cut -d / -f 1)"
-NAT_IF="$(find_if_by_cidr "${NAT_CIDR}")"
+NAT_ADDR="{{ hosting_config.management.nat_if_ip_addr }}"
+NAT_IF="$(find_if_by_addr "${NAT_ADDR}")"
 CLUSTER_CIDR="{{ hosting_config.management.cluster_net_cidr }}"
 if [[ "${NAT_IF}" != "" ]]; then
     nft flush ruleset

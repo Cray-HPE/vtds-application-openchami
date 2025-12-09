@@ -563,6 +563,33 @@ class Application(ApplicationAPI):
             )
         ]
 
+    def __find_nat_if_ip(self):
+        """The "external" interface on which we apply NAT to permit
+           external internet access is the same interface on which the
+           blade interconnect that supports the managment network is
+           constructed. Obtain the IP address on that blade
+           interconnect of the host blade for the management node and
+           use that as the key for looking up the interface on which
+           to set up NAT.
+
+        """
+        # All of the following were vetted by validate() so we can
+        # simply use them...
+        host_config = self.config['host']
+        host_network = host_config['network']
+        host_node_class = host_config["node_class"]
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        host_blade_class = (
+            virtual_nodes.node_host_blade_info(host_node_class)['blade_class']
+        )
+        blade_interconnect = virtual_networks.blade_interconnect(host_network)
+        # We are only going to do this on the first (should be only) instance
+        # of the management node, which always lives on the first virtual
+        # blade that hosts management nodes, so just use instance 0 here.
+        return virtual_blades.blade_ip(host_blade_class, 0, blade_interconnect)
+
     def __tpl_data_quadlet_hosting_cfg(self):
         """Get the configuration for hosting nodes under management by
         OpenCHAMI on this system. This includes the management network
@@ -585,7 +612,7 @@ class Application(ApplicationAPI):
                 'cluster_net_dhcp_start': "10.2.1.32",
                 'cluster_net_dhcp_end': "10.2.1.254",
                 'cluster_net_cidr': "10.2.1.0/24",
-                'nat_if_cidr': "10.255.1.1/32",
+                'nat_if_ip_addr': self.__find_nat_if_ip(),
                 # The IP address where the head-node's FQDN and
                 # external DNS are configured: normally the management
                 # network address of the first Virtual Blade hosting a
