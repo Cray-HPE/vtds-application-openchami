@@ -258,15 +258,6 @@ class Application(ApplicationAPI):
             for address in blade_addresses[(blade_class, instance)]
         ]
 
-    @staticmethod
-    def __clean_rie_service(rie_service):
-        """Remove the 'delete' field (if any) from the supplied
-        'rie_service' description and return the result
-        """
-        if 'delete' in rie_service:
-            rie_service.pop('delete')
-        return rie_service
-
     def __tpl_data(self):
 
         """Return a dictionary for use in rendering files to be
@@ -280,16 +271,6 @@ class Application(ApplicationAPI):
         host = self.config.get('host', {})
         host_network = host['network']
         host_node_class = host['node_class']
-        # Remove deleted services and clean out the delete field from
-        # all RIE services so that it doesn't leak into the template
-        # files.
-        rie_services = {
-            rie_name: self.__clean_rie_service(rie_service)
-            for rie_name, rie_service in deepcopy(
-                    self.config.get('rie_services', {})
-            ).items()
-            if not rie_service.get('delete', 'False')
-        }
         addressing = virtual_nodes.node_class_addressing(
             host_node_class, host_network
         )
@@ -326,7 +307,6 @@ class Application(ApplicationAPI):
                 }
                 for instance in range(0, len(macs))
             ],
-            'rie_services': rie_services,
             'bmc_mappings': bmc_mappings,
         }
         return tpl_data
@@ -622,15 +602,6 @@ class Application(ApplicationAPI):
                 'prefix_len': "24",
                 'netmask': "255.255.255.0",
             },
-            'cohost': {
-                'enable': False,
-                'net_head_host': "cohost_gw",
-                'net_head_domain': "openchami.cluster",
-                'net_head_fqdn': "cohost_gw.openchami.cluster",
-                'net_head_ip': "172.16.0.254",
-                'prefix_len': "24",
-                'netmask': "255.255.255.0",
-            },
         }
 
     def __tpl_data_quadlet(self):
@@ -816,17 +787,6 @@ class Application(ApplicationAPI):
                 password if password is not None else str(uuid4())
             )
         self.config['discovery_networks'] = filtered_discovery_networks
-
-        # Clean out RIE servers that are marked for deletion and clean
-        # out the 'delete' key value pair from all RIE servers
-        self.config['rie_services'] = {
-            name: {
-                key: value
-                for key, value in service.items() if key != 'delete'
-            }
-            for name, service in self.config.get('rie_services', {}).items()
-            if not service.get('delete', False)
-        }
 
     def prepare(self):
         self.prepared = True

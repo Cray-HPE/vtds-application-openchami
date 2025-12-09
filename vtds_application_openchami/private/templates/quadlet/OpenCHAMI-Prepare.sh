@@ -85,25 +85,6 @@ done
 # to reach OpenCHAMI services
 sudo sysctl -w net.ipv4.ip_forward=1
 
-{%- if hosting_config.cohost.enable %}
-# Create a virtual bridged network within libvirt to act as the node
-# local network used by OpenCHAMI services.
-echo "Setting up libvirt bridge network for OpenCHAMI"
-cat <<EOF > openchami-net.xml
-<network>
-  <name>openchami-net</name>
-  <bridge name="virbr-openchami" />
-  <forward mode='route'/>
-  <ip address="${LIBVIRT_NET_IP}" netmask="${LIBVIRT_NET_MASK}" />
-</network>
-EOF
-sudo virsh net-destroy openchami-net || true
-sudo virsh net-undefine openchami-net || true
-sudo virsh net-define openchami-net.xml
-sudo virsh net-start openchami-net
-sudo virsh net-autostart openchami-net
-
-{%- endif %}
 # Set up an /etc/hosts entry for the OpenCHAMI management head node so
 # we can use it for certs and for reaching the services.
 echo "Adding head node (${MANAGEMENT_HEADNODE_IP}) to /etc/hosts"

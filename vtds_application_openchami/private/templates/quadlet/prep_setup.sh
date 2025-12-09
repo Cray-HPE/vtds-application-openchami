@@ -146,10 +146,3 @@ MANAGEMENT_NET_LENGTH="{{ hosting_config.management.prefix_len }}"
 MANAGEMENT_NET_MASK="{{ hosting_config.management.netmask }}"
 MANAGEMENT_EXT_NAMESERVER="{{ hosting_config.management.net_head_dns_server }}"
 MANAGEMENT_NODE_CLASS="{{ host_node_class }}"
-
-{%- if hosting_config.cohost.enable %}
-LIBVIRT_NET_IP="{{ hosting_config.cohost.net_head_ip }}"
-LIBVIRT_NET_LENGTH="{{ hosting_config.cohost.prefix_len }}"
-LIBVIRT_NET_MASK="{{ hosting_config.cohost.netmask }}"
-{%- endif %}
-

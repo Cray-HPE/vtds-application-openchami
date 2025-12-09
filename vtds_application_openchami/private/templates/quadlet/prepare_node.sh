@@ -73,12 +73,6 @@ switch_dns "${MANAGEMENT_EXT_NAMESERVER}" "${CLUSTER_DOMAIN}" "${MANAGEMENT_HEAD
 # This is a management node, so set up OpenCHAMI and get it running and
 # initialized
 PACKAGES="\
-{%- if hosting_config.cohost.enable %}
-        libvirt\
-        qemu-kvm\
-        virt-install\
-        virt-manager\
-{%- endif %}
         dnsmasq\
         podman\
         buildah\
@@ -93,18 +87,11 @@ dnf -y check-update || true
 dnf -y install ${PACKAGES}
 dnf -y install epel-release
 dnf -y install s3cmd
-{%- if hosting_config.cohost.enable %}
-systemctl enable --now libvirtd
-{%- endif %}
 if ! getent group rocky; then
     groupadd rocky
 fi
 if ! getent passwd rocky; then
-{%- if hosting_config.cohost.enable %}
-    useradd -g rocky -G libvirt rocky
-{%- else %}
     useradd -g rocky rocky
-{%- endif %}
 fi
 # Remove rocky from /etc/sudoers and then put it back with NOPASSWD access
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
