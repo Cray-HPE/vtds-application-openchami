@@ -69,6 +69,31 @@ application:
     # The cluster domain name is used for resolving the DNS names of
     # nodes within the OpenCHAMI cluster.
     domain_name: openchami.cluster
+  # There are two DNS servers used beyond the cluster DNS server that is
+  # automatically set up using smd-coredns. The first contains the
+  # resolution of the head node FQDN (example: demo.openchami.cluster)
+  # for use within the cluster and, ostensibly, outside the cluster. If
+  # this is not specified or NULL it is  filled in with the blade-local
+  # network IP address of the host Virtual Blade where the management
+  # node is hosted. If this is specified it should point to a DNS server
+  # somewhere that knows the head-node FQDN. The second is the public
+  # DNS server. Generally speaking it is good to use whatever DNS server
+  # might be provided by the platform layer, if such a thing
+  # exists. Otherwise configure any public DNS server IP here.
+  dns:
+    # For the site DNS server we generally use the host blade network IP
+    # address of the Virtual Blade hosting the management node. This is
+    # a likely value for that. If yours differs, override this value in
+    # your configuration.
+    site: 10.234.0.1
+    # this is IP of the GCP metadata server override which works for GCP
+    # as a provider. If another provider is used, override this in your
+    # configuration overlay.
+    #
+    # XXX - it might be beter to move the setting for this down into the
+    #       provider layer and pull it from there using a new provider
+    #       layer API, but this will serve for now.
+    public: 169.254.169.254
   # The discovery_networks map is a collection of network specifications
   # for networks on which OpenCHAMI (currently Magellan) may do
   # discovery of RedFish endpoints. A discovery network may be either a
@@ -83,18 +108,6 @@ application:
   # All of the valid networks specified here will be used for discovery
   # of RedFish endpoints when OpenCHAMI is deployed.
   discovery_networks:
-    internal:
-      network_cidr: 172.25.0.0/24
-      network_name: null
-      # Username and password used by RIE for redfish emulation.  The
-      # password here is not really a secret because it does not grant
-      # actual access to anything of interest.
-      redfish_username: root
-      redfish_password: root_password
-      # On the internal network, Virtual Blades are meaningless, so no
-      # blade classes are listed here...
-      blade_classes: []
-      
     hardware_management:
       network_cidr: null
       network_name: hardware_management

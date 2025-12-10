@@ -23,6 +23,7 @@
 """Layer implementation module for the openchami application.
 
 """
+from ipaddress import ip_network
 import re
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
@@ -167,6 +168,7 @@ class Application(ApplicationAPI):
         _ = self.__cluster_network(validate=True)
         _ = self.__management_network(validate=True)
         _ = self.__cluster_net_coredhcp()
+        _ = self.__dns_config()
 
     def __validate_discovery_networks(self):
         """Run through the 'discovery_networks' configuration and make
@@ -341,6 +343,39 @@ class Application(ApplicationAPI):
                 "OpenCHAMI." % cluster_net
             )
         return coredhcp
+
+    def __dns_config(self):
+        """Get the DNS configuration for site and public DNS servers
+        from the configuration.
+
+        """
+        dns = self.config.get('dns', None)
+        if dns is None:
+            raise ContextualError(
+                "no DNS configuration block exists in the application "
+                "layer configuration for OpenCHAMI"
+            )
+        if not isinstance(dns, dict):
+            raise ContextualError(
+                "the DNS configuration block in the application "
+                "layer configuration for OpenCHAMI is invalid "
+                "(should be a dictionary block not a '%s')" % str(type(dns))
+            )
+        if dns.get('site', None) is None:
+            raise ContextualError(
+                "no 'site' value is configured in the DNS configuration "
+                "block in the application layer configuration for OpenCHAMI. "
+                "Use the blade host network IP address for the management "
+                "node for this."
+            )
+        if dns.get('public', None) is None:
+            raise ContextualError(
+                "no 'public' value is configured in the DNS configuration "
+                "block in the application layer configuration for OpenCHAMI. "
+                "Use either the provider's DNS server if one exists or known "
+                "good public DNS server IP address for this."
+            )
+        return dns
 
     def __bmc_mappings(self):
         """Return a list of dictionaries echo of which contains the
@@ -743,7 +778,15 @@ class Application(ApplicationAPI):
         and, if so, what the libvirt network setup is, and so forth.
 
         """
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
+        cluster_net_name = self.__cluster_network()
         cluster_dhcp_pool = self.__cluster_net_coredhcp()['pool']
+        dns = self.__dns_config()
+        cluster_net_cidr = virtual_networks.ipv4_cidr(cluster_net_name)
+        cluster_net_mask = str(
+            ip_network(cluster_net_cidr, strict=False).netmask
+        )
         return {
             'management': {
                 'enable': True,
@@ -755,19 +798,22 @@ class Application(ApplicationAPI):
                         self.config['cluster']['domain_name']
                     )
                 ),
-                'net_head_ip': "10.2.1.2",
+                'net_head_ip': virtual_nodes.node_ipv4_addr(
+                    self.config['host']['node_class'],
+                    0,
+                    cluster_net_name
+                ),
                 'cluster_net_dhcp_start': cluster_dhcp_pool['start'],
                 'cluster_net_dhcp_end': cluster_dhcp_pool['end'],
-                'cluster_net_cidr': "10.2.1.0/24",
+                'cluster_net_cidr': cluster_net_cidr,
+                'cluster_net_mask': cluster_net_mask,
                 'nat_if_ip_addr': self.__find_nat_if_ip(),
                 # The IP address where the head-node's FQDN and
                 # external DNS are configured: normally the management
                 # network address of the first Virtual Blade hosting a
                 # management node.
-                'net_head_dns_server': "10.234.0.1",
-                'upstream_dns_server': "169.254.169.254",
-                'prefix_len': "24",
-                'netmask': "255.255.255.0",
+                'net_head_dns_server': dns['site'],
+                'upstream_dns_server': dns['public'],
             },
         }
 

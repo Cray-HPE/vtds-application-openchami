@@ -142,7 +142,5 @@ function patch_coredns() {
 MANAGEMENT_HEADNODE_FQDN="{{ hosting_config.management.net_head_fqdn }}"
 CLUSTER_DOMAIN="{{ hosting_config.management.net_head_domain }}"
 MANAGEMENT_HEADNODE_IP="{{ hosting_config.management.net_head_ip }}"
-MANAGEMENT_NET_LENGTH="{{ hosting_config.management.prefix_len }}"
-MANAGEMENT_NET_MASK="{{ hosting_config.management.netmask }}"
 MANAGEMENT_EXT_NAMESERVER="{{ hosting_config.management.net_head_dns_server }}"
 MANAGEMENT_NODE_CLASS="{{ host_node_class }}"

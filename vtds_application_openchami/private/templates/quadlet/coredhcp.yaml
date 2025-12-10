@@ -40,7 +40,7 @@ server4:
     - server_id: {{ hosting_config.management.net_head_ip }}
     - dns: {{ hosting_config.management.net_head_ip }}
     - router: {{ hosting_config.management.net_head_ip }}
-    - netmask: {{ hosting_config.management.netmask }}
+    - netmask: {{ hosting_config.management.cluster_net_mask }}
     - coresmd: https://{{ hosting_config.management.net_head_fqdn }}:8443 http://{{ hosting_config.management.net_head_ip }}:8081 /root_ca/root_ca.crt 30s 1h false
 # DHCP settings...
     - bootloop: /tmp/coredhcp.db default 5m {{ hosting_config.management.cluster_net_dhcp_start }} {{ hosting_config.management.cluster_net_dhcp_end }}
