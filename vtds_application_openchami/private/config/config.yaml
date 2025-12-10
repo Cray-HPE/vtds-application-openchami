@@ -46,7 +46,7 @@ application:
   # hosted and the Virtual Node class whose instances will run
   # OpenCHAMI. Deployment will be done to all nodes in that class (for a
   # single instance of OpenCHAMI the cluster configuration should
-  # specify only one instance of the host node class.
+  # specify only one instance of the host node class).
   host:
     # The Virtual Network (named in the Cluster layer configuration) on
     # which OpenCHAMI will be hosted.
@@ -54,6 +54,21 @@ application:
     # The node class (named in the Cluster layer configuration) on which
     # OpenCHAMI will be deployed and run.
     node_class: host_node
+    # The host nodename will identify the host node within the cluster's
+    # DNS domain. For example, if your cluster has the domain name
+    # 'openchami.cluster' and the host node name specified here is
+    # 'demo' then the head node of the cluster will be set up as
+    #
+    #     demo.openchami.cluster.
+    #
+    # Those defaults are used here.
+    node_name: demo
+  # The cluster block contains configuration pertaining to the cluster
+  # as whole.
+  cluster:
+    # The cluster domain name is used for resolving the DNS names of
+    # nodes within the OpenCHAMI cluster.
+    domain_name: openchami.cluster
   # The discovery_networks map is a collection of network specifications
   # for networks on which OpenCHAMI (currently Magellan) may do
   # discovery of RedFish endpoints. A discovery network may be either a

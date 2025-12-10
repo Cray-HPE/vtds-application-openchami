@@ -23,7 +23,7 @@
 """Layer implementation module for the openchami application.
 
 """
-from copy import deepcopy
+import re
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
@@ -114,6 +114,58 @@ class Application(ApplicationAPI):
                     host_node_class, virtual_nodes.node_classes
                 )
             )
+        host_node_name = host.get('node_name', None)
+        if host_node_name is None:
+            raise ContextualError(
+                "validation error: OpenCHAMI layer configuration has no "
+                "'node_name' element in the 'host' information block"
+            )
+        if not isinstance(host_node_name, str):
+            raise ContextualError(
+                "validation error: OpenCHAMI layer configuration has an "
+                "invalid 'node_name' value in the host information block "
+                "(should be a string not a %s)" % str(type(host_node_name))
+            )
+
+    def __validate_cluster_info(self):
+        """Run through the 'cluster' configuration and make sure it is
+        all valid and consistent.
+
+        """
+        domain_re = re.compile(
+            r"^(?!-)(?:[a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$"
+        )
+        cluster_config = self.config.get('cluster', None)
+        if cluster_config is None:
+            raise ContextualError(
+                "validation error: OpenCHAMI layer configuration has no "
+                "'cluster' information block"
+            )
+        if not isinstance(cluster_config, dict):
+            raise ContextualError(
+                "validation error: OpenCHAMI layer configuration has an "
+                "invalid 'cluster' information block "
+                "(should be a dictionary not a %s)" % str(type(cluster_config))
+            )
+        domain_name = cluster_config.get('domain_name', None)
+        if domain_name is None:
+            raise ContextualError(
+                "validation error: OpenCHAMI layer configuration has no "
+                "'domain_name' element in the 'cluster' information block"
+            )
+        if not isinstance(domain_name, str):
+            raise ContextualError(
+                "validation error: OpenCHAMI layer cluster configuration "
+                "has an invalid 'domain_name' (should be a string not "
+                "a %s)" % str(type(domain_name))
+            )
+        if not domain_re.match(domain_name):
+            raise ContextualError(
+                "validation error: OpenCHAMI layer cluster configuration "
+                "has a non-conforming 'domain_name' ['%s']" % domain_name
+            )
+        _ = self.__cluster_network(validate=True)
+        _ = self.__management_network(validate=True)
 
     def __validate_discovery_networks(self):
         """Run through the 'discovery_networks' configuration and make
@@ -169,6 +221,63 @@ class Application(ApplicationAPI):
                     "validation error: OpenCHAMI layer configuration "
                     "discovery network '%s' has no RedFish password" % name
                 )
+
+    def __tagged_network(self, tag, validate):
+        """Find the first network with a field in its
+           application_metadata of the form '<tag>: true' and return
+           the name of that network. If 'validate' is true, raise
+           errors and warnings based on error conditions found. Since
+           we run a 'validate' pass on data, other callers may specify
+           'validate' as false to reduce verbosity of warning
+           messages.
+
+        """
+        cluster = self.stack.get_cluster_api()
+        virtual_networks = cluster.get_virtual_networks()
+        available_networks = virtual_networks.network_names()
+        tagged_networks = [
+            network_name
+            for network_name in available_networks
+            if virtual_networks.application_metadata(
+                    network_name
+            ).get(tag, False)
+        ]
+        if len(tagged_networks) < 1 and validate:
+            raise ContextualError(
+                "there is no Virtual Network with the '%s: true' tag "
+                "network in Virtual Network application metadata. "
+                "Please edit your Cluster Layer Virtual Network "
+                "configurations and add a '%s: true' "
+                "specifier to application metadata in one of the "
+                "Virtual Network descriptions." % (tag, tag)
+            )
+        if len(tagged_networks) > 1 and validate:
+            warning_msg(
+                "more than one network %s with the '%s: true' tag "
+                "network in the Cluster Layer Virtual Network "
+                "application metadata. At present only one such "
+                "network is supported, so the first one found '%s' "
+                "will be used." % (
+                    str(tagged_networks), tag, tagged_networks[0]
+                )
+            )
+        return tagged_networks[0]
+
+    def __cluster_network(self, validate=False):
+        """Find the first Virtual Network with the
+        'cluster_network: true' tag
+        in its application metadata and return its name.
+
+        """
+        return self.__tagged_network('cluster_network', validate)
+
+    def __management_network(self, validate=False):
+        """Find the first Virtual Network with the
+        'management_network: true' tag
+        in its application metadata and return its name.
+
+        """
+        return self.__tagged_network('management_network', validate)
 
     def __bmc_mappings(self):
         """Return a list of dictionaries echo of which contains the
@@ -483,16 +592,8 @@ class Application(ApplicationAPI):
                 'bmc_ip':  addressing.address(
                     'AF_INET', bmc_instances[(node_class, instance)]
                 ),
-                'cluster_net_interface': (
-                    virtual_nodes.application_metadata(node_class).get(
-                        'cluster_net_interface', ""
-                    )
-                ),
-                'management_net_interface': (
-                    virtual_nodes.application_metadata(node_class).get(
-                        'management_net_interface', ""
-                    )
-                ),
+                'cluster_net_interface': self.__cluster_network(),
+                'management_net_interface': self.__management_network(),
                 'node_class': node_class,
                 'node_group': (
                     virtual_nodes.application_metadata(node_class).get(
@@ -546,7 +647,7 @@ class Application(ApplicationAPI):
     def __find_nat_if_ip(self):
         """The "external" interface on which we apply NAT to permit
            external internet access is the same interface on which the
-           blade interconnect that supports the managment network is
+           blade interconnect that supports the management network is
            constructed. Obtain the IP address on that blade
            interconnect of the host blade for the management node and
            use that as the key for looking up the interface on which
@@ -578,16 +679,18 @@ class Application(ApplicationAPI):
         Management node is to be allowed (i.e. the tutorial use case),
         and, if so, what the libvirt network setup is, and so forth.
 
-        XXX - these settings are hardcoded temporarily to allow them
-        to be used in templates. They need to be derived from config.
-
         """
         return {
             'management': {
                 'enable': True,
-                'net_head_host': "demo",
-                'net_head_domain': "openchami.cluster",
-                'net_head_fqdn': "demo.openchami.cluster",
+                'net_head_host': self.config['host']['node_name'],
+                'net_head_domain': self.config['cluster']['domain_name'],
+                'net_head_fqdn': (
+                    "%s.%s" % (
+                        self.config['host']['node_name'],
+                        self.config['cluster']['domain_name']
+                    )
+                ),
                 'net_head_ip': "10.2.1.2",
                 'cluster_net_dhcp_start': "10.2.1.32",
                 'cluster_net_dhcp_end': "10.2.1.254",
@@ -798,6 +901,7 @@ class Application(ApplicationAPI):
                 "call prepare() first"
             )
         self.__validate_host_info()
+        self.__validate_cluster_info()
         self.__validate_discovery_networks()
 
     def deploy(self):
