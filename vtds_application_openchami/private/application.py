@@ -166,6 +166,7 @@ class Application(ApplicationAPI):
             )
         _ = self.__cluster_network(validate=True)
         _ = self.__management_network(validate=True)
+        _ = self.__cluster_net_coredhcp()
 
     def __validate_discovery_networks(self):
         """Run through the 'discovery_networks' configuration and make
@@ -278,6 +279,68 @@ class Application(ApplicationAPI):
 
         """
         return self.__tagged_network('management_network', validate)
+
+    def __cluster_net_coredhcp(self):
+        """Retrieve the cluster network coredhcp configuration from the
+        Virtual Network application metadata in the vTDS Cluster Layer
+        for OpenCHAMI.
+        """
+        cluster_net = self.__cluster_network()
+        cluster = self.stack.get_cluster_api()
+        virtual_networks = cluster.get_virtual_networks()
+        metadata = virtual_networks.application_metadata(cluster_net)
+        coredhcp = metadata.get('coredhcp', None)
+        if coredhcp is None:
+            raise ContextualError(
+                "the designated cluster network ('%s') has no "
+                "coredhcp configuration defined in its vTDS "
+                "Cluster Layer Virtual Network application "
+                "metadata for OpenCHAMI." % cluster_net
+            )
+        if not isinstance(coredhcp, dict):
+            raise ContextualError(
+                "the designated cluster network ('%s') has an "
+                "invalid coredhcp configuration defined in its "
+                "vTDS Cluster Layer Virtual Network application "
+                "metadata for OpenCHAMI (it should be a "
+                "dictionary not "
+                "a %s)" % (cluster_net, str(type(coredhcp)))
+            )
+        pool = coredhcp.get('pool', None)
+        if pool is None:
+            raise ContextualError(
+                "the designated cluster network ('%s') has no "
+                "address range 'pool' defined for coredhcp "
+                "in its vTDS Cluster Layer Virtual Network "
+                "application metadata for "
+                "OpenCHAMI." % cluster_net
+            )
+        if not isinstance(pool, dict):
+            raise ContextualError(
+                "the designated cluster network ('%s') has an "
+                "invalid address range 'pool' for coredhcp in its "
+                "vTDS Cluster Layer Virtual Network application "
+                "metadata for OpenCHAMI (it should be a "
+                "dictionary not "
+                " a %s)" % (cluster_net, str(type(pool)))
+            )
+        if pool.get('start', None) is None:
+            raise ContextualError(
+                "the designated cluster network ('%s') has no "
+                "address range 'pool' 'start' addrtess defined "
+                "for coredhcp in its vTDS Cluster Layer Virtual"
+                " Network application metadata for "
+                "OpenCHAMI." % cluster_net
+            )
+        if pool.get('end', None) is None:
+            raise ContextualError(
+                "the designated cluster network ('%s') has no "
+                "address range 'pool' 'start' addrtess defined "
+                "for coredhcp in its vTDS Cluster Layer Virtual"
+                " Network application metadata for "
+                "OpenCHAMI." % cluster_net
+            )
+        return coredhcp
 
     def __bmc_mappings(self):
         """Return a list of dictionaries echo of which contains the
@@ -680,6 +743,7 @@ class Application(ApplicationAPI):
         and, if so, what the libvirt network setup is, and so forth.
 
         """
+        cluster_dhcp_pool = self.__cluster_net_coredhcp()['pool']
         return {
             'management': {
                 'enable': True,
@@ -692,8 +756,8 @@ class Application(ApplicationAPI):
                     )
                 ),
                 'net_head_ip': "10.2.1.2",
-                'cluster_net_dhcp_start': "10.2.1.32",
-                'cluster_net_dhcp_end': "10.2.1.254",
+                'cluster_net_dhcp_start': cluster_dhcp_pool['start'],
+                'cluster_net_dhcp_end': cluster_dhcp_pool['end'],
                 'cluster_net_cidr': "10.2.1.0/24",
                 'nat_if_ip_addr': self.__find_nat_if_ip(),
                 # The IP address where the head-node's FQDN and
