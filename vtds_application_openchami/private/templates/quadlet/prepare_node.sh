@@ -97,6 +97,11 @@ fi
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
+# Set the interface name in coredhcp.yaml
+sed -i \
+    -e "s/::MGMT_NET_HEAD_IFNAME::/${MGMT_NET_HEAD_IFNAME}/g" \
+    coredhcp.yaml
+
 # Copy prepared data files to the 'rocky' user
 mkdir -p ~rocky/openchami-files
 for file in "${OPENCHAMI_FILES[@]}"; do
