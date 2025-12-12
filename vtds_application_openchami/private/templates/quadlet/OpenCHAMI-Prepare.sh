@@ -131,6 +131,10 @@ curl -L -o "$rpm_name" "$rpm_url"
 echo "Installing OpenCHAMI RPM"
 if systemctl status openchami.target; then
     sudo systemctl stop openchami.target
+    # Also remove any SMD or BSS data after
+    # giving the pods a chance to stop
+    sleep 5
+    sudo podman volume rm postgres-data
 fi
 sudo rpm -Uvh --reinstall "$rpm_name"
 
@@ -223,15 +227,7 @@ if ! ${smd_running}; then
     fail "timeout waiting for SMD to start, openChami is not fully available"
 fi
 
-# Run the static node discovery (first delete any previously existing content)
-if [[ "$(ochami smd component get | jq ".Components | length")" -gt 0 ]]; then
-    echo y | ochami smd component delete --all
-    echo y | ochami smd compep delete --all
-    echo y | ochami smd iface delete --all
-    echo y | ochami smd rfe delete --all
-    echo y | ochami smd group delete --all
-    echo
-fi
+# Run the static node discovery
 ochami discover static $(discovery_version) -f yaml -d @/opt/workdir/nodes/nodes.yaml
 
 # Install and configure 'regctl'
