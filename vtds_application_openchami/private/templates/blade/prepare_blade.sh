@@ -22,6 +22,39 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 set -e -o pipefail
+function error_handler() {
+    local filename="${1}"; shift
+    local lineno="${1}"; shift
+    local exitval="${1}"; shift
+    echo "exiting on error [${exitval}] from ${filename}:${lineno}" >&2
+    exit ${exitval}
+}
+trap 'error_handler "${BASH_SOURCE[0]}" "${LINENO}" "${?}"' ERR
+
+function fail() {
+    local message="${*:-"failing for no specified reason"}"
+    echo "${BASH_SOURCE[1]}:${BASH_LINENO[0]}:[${FUNCNAME[1]}]: ${message}" >&2
+    return 1
+}
+
+function usage() {
+    local msg="{$*}"
+    if [ -n "${msg}" ]; then
+        echo "${msg}" >&2
+    fi
+    echo "Usage: prepare_blade.sh <blade-class> <blade-instance>" >&2
+    exit 1
+}
+
+# Pick off the blade class and instance from the arguments
+BLADE_CLASS=${1}; shift || usage "missing blade class parameter"
+BLADE_INSTANCE=${1}; shift || usage "missing blade instance parameter"
+
+# These files need to have their copyright comments stripped from them
+# because the comments break parsing.
+STRIP_COMMENT_FILES=(
+    "bmc_info.json"
+)
 
 function find_if_by_addr() {
     addr=${1}; shift || fail "no ip addr supplied when looking up ip interface"
@@ -35,6 +68,51 @@ function find_if_by_addr() {
         "
 }
 
+function rf_username() {
+    local blade_class="${1}"; shift || fail "missing blade class in rf_username"
+    local blade_instance="${1}"; shift || fail "missing blade instance in rf_username"
+    sudo cat /etc/vtds/bmc_info.json | \
+        jq -r "\
+          .[] | \
+          select(
+            .blade_class == \"${blade_class}\" and \
+            .blade_instance == \"${blade_instance}\" \
+          ) |
+          .redfish_username \
+        "
+}
+
+function rf_password() {
+    blade_class="${1}"; shift || fail "missing blade class in rf_password"
+    blade_instance="${1}"; shift || fail "missing blade instance in rf_password"
+    sudo cat /etc/vtds/bmc_info.json | \
+        jq -r "\
+          .[] | \
+          select(
+            .blade_class == \"${blade_class}\" and \
+            .blade_instance == \"${blade_instance}\" \
+          ) |
+          .redfish_password \
+        "
+}
+
+# Strip comments out of prepared data files as needed.
+for file in "${STRIP_COMMENT_FILES[@]}"; do
+    sed -i \
+        -e "/^[[:blank:]]*#/d" \
+        -e "s/[[:blank:]]*#.*$//" \
+        "${file}"
+done
+
+# Copy the BMC information into /etc/vtds and make sure it is not
+# publicly readable since it contains RedFish passwords for BMCs.
+chmod 600 bmc_info.json
+chown root:root bmc_info.json
+mkdir -p /etc/vtds
+cp bmc_info.json /etc/vtds/bmc_info.json
+chmod 600 /etc/vtds/bmc_info.json
+chown root:root /etc/vtds/bmc_info.json
+
 # Create the directory in /etc where all of the Sushy Tools setup will
 # go.
 mkdir -p /etc/sushy-emulator
@@ -47,13 +125,9 @@ openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
         -subj "/C=US/ST=SushyTools/L=Vtds/O=vTDS/CN=vtds"
 
 # Create an htpasswd file for the sushy-emulator to use
-{% for network in discovery_networks %}
-{% if network.external %}
-htpasswd -B -b -c /etc/sushy-emulator/users \
-         {{ network.redfish_username }} \
-         {{ network.redfish_password }}
-{% endif %}
-{% endfor %}
+rf_password "${BLADE_CLASS}" "${BLADE_INSTANCE}" | \
+    htpasswd -B -i -c /etc/sushy-emulator/users \
+             "$(rf_username ${BLADE_CLASS} ${BLADE_INSTANCE})"
 
 # Put the nginx HTTPS reverse proxy configuration into
 # the nginx configuration directory

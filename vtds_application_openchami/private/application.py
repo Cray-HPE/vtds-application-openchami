@@ -518,61 +518,43 @@ class Application(ApplicationAPI):
         }
         return tpl_data
 
-    def __bmc_addressing_by_node_class(self, node_classes):
-        """Generate a node-class name to Virtual Blade addressing
-        dictionary based on discovery networks and node-class host
-        blade information.
+    def __bmc_xnames_by_node_class(self, node_classes):
+        """Generate a node-class name to Virtual Blade XNAME list
+        dictionary based on node-class host blade information.
 
         """
-        cluster = self.stack.get_cluster_api()
-        virtual_nodes = cluster.get_virtual_nodes()
-        virtual_networks = cluster.get_virtual_networks()
-        # Get the list of discovery Virtual Network names where
-        # Virtual Blades hosting BMC services may live so we can get
-        # the BMC information for each node.
-        discovery_network_names = [
-            network['network_name']
-            for _, network in self.config.get('discovery_networks', {}).items()
-            if network.get('network_name', None) is not None
-        ]
-        # Get the addressing for all of the BMC Virtual Blade classes
-        # hosting Virtual nodes. If the BMC for a given node class is
-        # not connected to a given network, the addressing on that
-        # network for the BMC will be None, so we should skip it. If
-        # the BMC for a given node class is one more than one
-        # discovery network, it should be okay just to take the last
-        # one we find.
-        bmc_addressing = {
-            node_class: virtual_networks.blade_class_addressing(
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        # Get the XNAME lists for all of the BMC Virtual Blade classes
+        # hosting Virtual nodes.
+        bmc_xnames = {
+            node_class: virtual_blades.application_metadata(
                 virtual_nodes.node_host_blade_info(
                     node_class
-                )['blade_class'],
-                net_name
-            )
+                )['blade_class']
+            ).get('xnames', [])
             for node_class in node_classes
-            for net_name in discovery_network_names
-            if virtual_networks.blade_class_addressing(
-                virtual_nodes.node_host_blade_info(
-                    node_class
-                )['blade_class'],
-                net_name
-            ) is not None
+            if virtual_blades.application_metadata(
+                    virtual_nodes.node_host_blade_info(
+                        node_class
+                    )['blade_class']
+            ).get('xnames', [])
         }
-        # Check for and warn about any node_class that has a BMC
-        # Virtual Blade that is not connected to a Discovery Network,
-        # since those will be undiscoverable.
-        disconnected = [
+        # Check for and warn about any node_class that has no BMC
+        # XNAMEs assigned to it because those will not work in
+        # discovery.
+        broken = [
             node_class
             for node_class in node_classes
-            if node_class not in bmc_addressing
+            if node_class not in bmc_xnames
         ]
-        if disconnected:
+        if broken:
             warning_msg(
                 "the following node classes appear to have host Virtual "
-                "Blades that are not connected to a discovery network "
-                "and will not be discovered: '%s'" % "', '".join(disconnected)
+                "Blades that have no XNAMEs defined in application metadata "
+                "and will fail discovery: '%s'" % "', '".join(broken)
             )
-        return bmc_addressing
+        return bmc_xnames
 
     def __nid_from_class_instance(self, classes, class_name, instance):
         """Calculate a NID from a list of node class names, the node's
@@ -638,9 +620,85 @@ class Application(ApplicationAPI):
                 ),
                 str_list[-1]
             )
-            if len(str_list > 1) else '%s' % str_list[0]
+            if len(str_list) > 1 else '%s' % str_list[0]
             if str_list else ""
         )
+
+    def __tpl_data_quadlet_bmcs(self):
+        """Construct the 'bmcs' element of the quadlet system template
+        data.
+
+        """
+        virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
+        virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
+        virtual_blades = self.stack.get_provider_api().get_virtual_blades()
+        # Get the list of managed node classes because we need the
+        # blade classes that host the ones that have non-zero counts.
+        node_classes = self.__node_classes_by_role('managed')
+        # Get the list of blade classes that are actually in use (i.e. they
+        # host actual managed nodes)
+        blade_classes = [
+            virtual_nodes.node_host_blade_info(node_class)['blade_class']
+            for node_class in node_classes
+            if virtual_nodes.node_count(node_class) > 0
+        ]
+        blade_class_xnames = {
+            blade_class: virtual_blades.application_metadata(blade_class).get(
+                'xnames', []
+            )
+            for blade_class in blade_classes
+        }
+        discovery_networks = self.config.get('discovery_networks', {})
+        # Get the blade to blade count mapping for all blade classes
+        # that have 1 or more instances. This gathers the counts and
+        # makes sure we only include blades that actually exist from
+        # here on in.
+        blade_counts = {
+            blade_class: virtual_blades.blade_count(blade_class)
+            for blade_class in blade_classes
+            if virtual_blades.blade_count(blade_class) > 0
+        }
+        # Get all of the BMC information for blade instances on all of
+        # their connected discovery networks.
+        blade_info = {
+            (blade_class, instance): {
+                'xname': blade_class_xnames[blade_class][instance],
+                'blade_class': blade_class,
+                'blade_instance': instance,
+                'networks': {
+                    discovery_net['network_name']: {
+                        'mac': virtual_networks.blade_class_addressing(
+                            blade_class, discovery_net['network_name']
+                        ).address('AF_PACKET', instance),
+                        'ipv4':  virtual_networks.blade_class_addressing(
+                            blade_class, discovery_net['network_name']
+                        ).address('AF_INET', instance),
+                        'redfish_username':  discovery_net['redfish_username'],
+                        'redfish_password':  discovery_net['redfish_password'],
+                    }
+                    for _, discovery_net in discovery_networks.items()
+                    if virtual_networks.blade_class_addressing(
+                        blade_class, discovery_net['network_name']
+                    ) is not None
+                }
+            }
+            for blade_class, count in blade_counts.items()
+            for instance in range(0, count)
+        }
+        # Remap the blade class information into BMC network
+        # information indexed by the BMC XNAME for all blades that
+        # contain at least one connected network.  Pick the first
+        # network. Since all are discovery networks, any one will do
+        # (really there should only be one).
+        return {
+            bmc_info['xname']: {
+                'blade_class': bmc_info['blade_class'],
+                'blade_instance': bmc_info['blade_instance'],
+                'network': list(bmc_info['networks'].items())[0][1],
+            }
+            for _, bmc_info in blade_info.items()
+            if bmc_info['networks']
+        }
 
     def __tpl_data_quadlet_nodes(self):
         """Construct the 'nodes' element of the quadlet system
@@ -655,7 +713,7 @@ class Application(ApplicationAPI):
         # repeatable on a given config, sort the node class names so
         # they come up in the same order every time.
         managed_node_classes = self.__node_classes_by_role('managed')
-        bmc_addressing = self.__bmc_addressing_by_node_class(
+        bmc_xnames = self.__bmc_xnames_by_node_class(
             managed_node_classes
         )
         bmc_instances = {
@@ -664,7 +722,7 @@ class Application(ApplicationAPI):
                     node_class
                 )['instance_capacity'])
             )
-            for node_class in bmc_addressing.keys()
+            for node_class in bmc_xnames.keys()
             for instance in range(0, virtual_nodes.node_count(node_class))
         }
         return [
@@ -684,12 +742,9 @@ class Application(ApplicationAPI):
                 # We forced the node name of the node to be its xname
                 # during consolidate(), use the node name here...
                 'xname': virtual_nodes.node_node_name(node_class, instance),
-                'bmc_mac': addressing.address(
-                    'AF_PACKET', bmc_instances[(node_class, instance)]
-                ),
-                'bmc_ip':  addressing.address(
-                    'AF_INET', bmc_instances[(node_class, instance)]
-                ),
+                'bmc_xname': bmc_xnames[node_class][
+                    bmc_instances[(node_class, instance)]
+                ],
                 'cluster_net_interface': self.__cluster_network(),
                 'management_net_interface': self.__management_network(),
                 'node_class': node_class,
@@ -716,7 +771,7 @@ class Application(ApplicationAPI):
                     for net_name in virtual_nodes.network_names(node_class)
                 ],
             }
-            for node_class, addressing in bmc_addressing.items()
+            for node_class, addressing in bmc_xnames.items()
             for instance in range(0, virtual_nodes.node_count(node_class))
         ]
 
@@ -827,6 +882,7 @@ class Application(ApplicationAPI):
         tpl_data['nodes'] = self.__tpl_data_quadlet_nodes()
         tpl_data['managed_macs'] = self.__tpl_data_quadlet_managed_macs()
         tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
+        tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
         return tpl_data
 
     def __tpl_data_bare(self):
@@ -848,7 +904,7 @@ class Application(ApplicationAPI):
                 "modes are: %s" % (
                     self.deploy_mode,
                     self.__formatted_str_list(
-                        list(self.tpl_data.keys())
+                        list(self.tpl_data_calls.keys())
                     )
                 )
             )from err

@@ -150,8 +150,6 @@ echo "Setting up CoreDHCP Configuration"
 sudo cp /root/coredhcp.yaml /etc/openchami/configs/coredhcp.yaml
 
 # Set up Cluster SSL Certs for the
-#
-# XXX - this needs to be templated to use the configured FQDN of the head node
 echo "Setting up cluster SSL certs for OpenCHAMI"
 sudo openchami-certificate-update update "${MANAGEMENT_HEADNODE_FQDN}"
 
@@ -168,8 +166,6 @@ echo "Installing OpenCHAMI CLI (ochami) RPM"
 sudo dnf install -y ./ochami.rpm
 
 # Configure the OpenCHAMI CLI client
-#
-# XXX- This needs to be templated to use the configured FQDN of the head node
 echo "Configuring OpenCHAMI CLI (ochami) Client"
 sudo rm -f /etc/ochami/config.yaml
 echo y | sudo ochami config cluster set --system --default demo \
@@ -346,10 +342,6 @@ ochami cloud-init node set \
 # Now that all the images are in place, cloud-init is set up and the
 # managed nodes have been configured, go through and start them all
 # using RedFish curls.
-#
-# XXX - we need to add BMC user and BMC password to these actions, get
-#       from config and add to template. Then pick up here as the
-#       third and fourth args to 'power-on-node'
 {%- for node in nodes %}
-power-on-node "{{ node.xname }}" "{{ node.bmc_ip }}"
+power-on-node "{{ node.xname }}" "{{ node.bmc_xname }}"
 {%- endfor %}

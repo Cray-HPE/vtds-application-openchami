@@ -26,7 +26,7 @@ options:
     - 'rocky9'
   pkg_manager: dnf
   # XXX - needs templating of the boot image name / tag
-  parent: '{{ hosting_config.management.net_head_ip }}:5000/demo/rocky-base:9'
+  parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/rocky-base:9'
   registry_opts_pull:
     - '--tls-verify=false'
 

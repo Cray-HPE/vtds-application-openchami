@@ -19,37 +19,21 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-
-# The 'nodes.yaml' file for use in static discovery of managed nodes.
+# 
+# THIS COMMENT WILL BE STRIPPED BEFORE THIS FILE IS USED AS A JSON FILE.
 #
-# Each BMC is discoverable on at least one discover network, the info
-# filled in by the template here is (arbitrarily) for the first
-# discovery network the BMC reside on (probably the only one, but not
-# necessarily)
-bmcs:
-{%- for xname, bmc_info in bmcs.items() %}
-- xname: {{ xname }}
-  mac: {{ bmc_info.network.mac }}
-  ip: {{ bmc_info.network.ipv4 }}
-  fqdn: {{ xname }}.{{ hosting_config.management.net_head_domain }}
-{%- endfor %}
-nodes:
-{%- for node in nodes %}
-- name: {{ node.name }}
-  nid: {{ node.nid }}
-  xname: {{ node.xname }}
-  bmc: {{ node.bmc_xname }}
-  groups:
-    - {{ node.node_group }}
-  interfaces:
-  {%- for interface in node.interfaces %}
-  {%- if interface.network_name == node.cluster_net_interface %}
-  - mac_addr: {{ interface.mac_addr }}
-    ip_addrs:
-    {%- for ip_addr in interface.ip_addrs %}
-    - name: {{ ip_addr.name }}
-      ip_addr: {{ ip_addr.ip_addr }}
+# Information needed to set up and access BMCs, including usernames and
+# passwords. It should be stored as a 'root' owned file with permission
+# 0600 in /etc/vtds/bmc_info.json.
+
+[
+    {%- for xname, bmc_info in bmcs.items() %}
+    {
+        "xname": "{{ xname }}",
+        "blade_class": "{{ bmc_info.blade_class }}",
+        "blade_instance": "{{ bmc_info.blade_instance }}",
+        "redfish_username": "{{ bmc_info.network.redfish_username }}",
+        "redfish_password": "{{ bmc_info.network.redfish_password }}"
+    }{%- if not loop.last -%},{%- endif -%}
     {%- endfor %}
-  {%- endif %}
-  {%- endfor %}
-{%- endfor %}
+]

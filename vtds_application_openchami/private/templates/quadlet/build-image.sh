@@ -33,7 +33,7 @@ function build-image() (
     local config="${1}"; shift || _bi_fail "image config file not specified"
     # Build with the specified builder. Default to using the RH9 builder
     local builder="${1:-"ghcr.io/openchami/image-build-el9:v0.1.1"}"
-    [[ -f "${config}" ]] || fail "${config} not found"
+    [[ -f "${config}" ]] || _bi_fail "${config} not found"
     podman run \
            --network=host \
            --rm \
@@ -45,7 +45,7 @@ function build-image() (
            "${builder}" \
            image-build \
            --config config.yaml \
-           --log-level DEBUG || fail "cannot build image defined in ${config}"
+           --log-level DEBUG || _bi_fail "cannot build image defined in ${config}"
 )
 
 function build-image-rh9() {
@@ -85,16 +85,27 @@ $(for mac in ${macs}; do echo "  - ${mac}"; done)
 EOF
 }
 
+function __bmc_user() {
+    local xname="${1}"; shift || _bi_fail "BMC xname not provided for __bmc_user"
+    sudo cat /etc/vtds/bmc_info.json | \
+        jq -r ".[] | select(.xname == \"${xname}\") | .redfish_username"
+}
+
+function __bmc_password() {
+    local xname="${1}"; shift || _bi_fail "BMC xname not provided for __bmc_user"
+    sudo cat /etc/vtds/bmc_info.json | \
+        jq -r ".[] | select(.xname == \"${xname}\") | .redfish_password"
+}
+
 function __node_reset() {
     local reset_type="${1}"; shift || _bi_fail "no reset type supplied"
-    local node_xname="${1}"; shift || _bi_fail "no node XNAMEprovided"
-    local bmc_ip="${1}"; shift || _bi_fail "no BMC IP Address provided"
-    local bmc_user="${1}"; shift || bmc_user="root"
-    local bmc_password="${1}"; shift || bmc_password="root_password"
-    local bmc_url="https://${bmc_ip}/redfish/v1/Systems"
+    local node_xname="${1}"; shift || _bi_fail "no node XNAME provided"
+    local bmc_xname="${1}"; shift || _bi_fail "no BMC XNAME provided"
+    local bmc_url="https://${bmc_xname}/redfish/v1/Systems"
     local node_action="${node_xname}/Actions/ComputerSystem.Reset"
 
-    curl -k -u "${bmc_user}:${bmc_password}" \
+    curl -k \
+         -u "$(__bmc_user "${bmc_xname}"):$(__bmc_password "${bmc_xname}")" \
          -H "Content-Type: application/json" \
          -X POST -d "{\"ResetType\": \"${reset_type}\" }" \
          "${bmc_url}/${node_action}"

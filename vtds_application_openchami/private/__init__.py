@@ -180,6 +180,13 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
+        template('quadlet/bmc_info.json'),
+        home('bmc_info.json'),
+        '600',
+        'node_BMC_settings',
+        False,
+    ),
+    (
         template('quadlet/prepare_node.sh'),
         home('prepare_node.sh'),
         '755',
@@ -210,6 +217,13 @@ BLADE_FILES = [
         '644',
         'sushy-emulator-unit-file',
         False
+    ),
+    (
+        template('quadlet/bmc_info.json'),
+        home('bmc_info.json'),
+        '600',
+        'blade_BMC_settings',
+        False,
     ),
     (
         template('blade/prepare_blade.sh'),
