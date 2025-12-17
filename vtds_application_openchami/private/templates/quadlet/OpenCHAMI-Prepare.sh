@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -43,9 +43,9 @@ source "${SCRIPT_DIR}/openchami-files/build-image.sh"
 #       reflect their more generalized natures. For now this is
 #       accurate.
 IMAGE_BUILDERS=(
-    "rocky-base-9.yaml"
-    "compute-base-rocky9.yaml"
-    "compute-debug-rocky9.yaml"
+    {%- for builder in image_builders %}
+    {{ builder }}.yaml
+    {%- endfor %}
 )
 
 ROCKY_DIRS=(
@@ -243,17 +243,12 @@ for bucket in "${S3_PUBLIC_BUCKETS[@]}"; do
           --host-bucket="${MANAGEMENT_HEADNODE_IP}:9000"
 done
 
-# Build the Base Image
-echo "Building the Common Base OS Image"
-build-image /opt/workdir/images/rocky-base-9.yaml
-
-# Build the Compute Node Base Image
-echo "Building the Compute Node Base OS image"
-build-image /opt/workdir/images/compute-base-rocky9.yaml
-
-# Build the Compute Node Debug Image
-echo "Building the Compute Node Debug OS image"
-build-image /opt/workdir/images/compute-debug-rocky9.yaml
+# Build the node images...
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    BUILDER_FILE="/opt/workdir/images/${builder}"
+    echo "Building image from image builder '${BUILDER_FILE}'"
+    build-image "${BUILDER_FILE}"
+done
 
 # Make sure coresmd-coredns is running by now. If it is not, we have a
 # problem and we don't want to switch over to it...
@@ -268,27 +263,25 @@ switch_dns "${MANAGEMENT_HEADNODE_IP}" "${CLUSTER_DOMAIN}"
 export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 
 # Create the boot configuration for the Compute node Debug image
-echo "Creating the debug boot configuration"
 cd /opt/workdir/boot
-generate-boot-config \
-    "compute/debug" \
-    "${MANAGEMENT_HEADNODE_IP}" \
-    $(managed_macs) | \
-    tee /opt/workdir/boot/boot-compute-debug.yaml
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    BUILDER_FILE="/opt/workdir/images/${builder}"
+    BOOT_CONFIG_FILE="/opt/workdir/boot/${builder}"
+    echo "Building boot configuration '${BOOT_CONFIG_FILE}'"
+    S3_PREFIX="$( \
+      yaml_to_json < "${BUILDER_FILE}" | jq -r '.options.s3_prefix' |
+      sed -e 's:/[[:blank:]]*$::' \
+    )"
+    generate-boot-config \
+        "${S3_PREFIX}" \
+        "${MANAGEMENT_HEADNODE_IP}" \
+        $(managed_macs) | \
+        tee "${BOOT_CONFIG_FILE}"
+done
 
-# Create the boot configuration for the Compute node Base image
-echo "Creating the base boot configuration"
-cd /opt/workdir/boot
-generate-boot-config \
-    "compute/base" \
-    "${MANAGEMENT_HEADNODE_IP}" \
-    $(managed_macs) | \
-    tee /opt/workdir/boot/boot-compute-base.yaml
-
-# Install the boot configuration for the debug kernel
 echo "Install boot configuration"
 ochami bss boot params set -f yaml \
-       -d @/opt/workdir/boot/boot-compute-debug.yaml
+       -d @/opt/workdir/boot/{{ active_image }}.yaml
 
 # Set up cloud-init for some basics...
 #

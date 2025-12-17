@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -117,9 +117,174 @@ application:
       # the configuration automatically if it is null. Override it at your
       # own risk if you want a known value.
       redfish_username: root
-      redfish_password: root_password
+      redfish_password: null
       # The list of Virtual Blade classes here tells the management node
       # deployment which blade classes to include in the set of RedFish
       # endpoints that need mappings to xnames.
       blade_classes:
         - host-blade
+  # The 'images' section contains 'builders', 'users' and 'groups' used
+  # to set up managed node system images for use with OpenCHAMI.
+  #
+  # The 'builders' sub-section contains the YAML build configurations
+  # (image builders) for managed node images you want built for your
+  # system. Unlike the rest of the content in the Application layer
+  # configuration, each 'builder' is given as the unconstrained YAML
+  # that will be interpreted by the image build tool. Values in this
+  # YAML can be templated with configuration derived values, which will
+  # be filled out with configuration derived content during deployment
+  # of the generated image builder file. The most commonly template
+  # variable used in an image builder is the fully qualified domain name
+  # of the OpenCHAMI management (head) node:
+  #
+  #    '{{ hosting_config.management.net_head_fqdn }}'
+  #
+  # which is generally used to compose the base URLs for S3 and Registry
+  # sources and destinations. When modifying templated fields, be
+  # careful to only remove the templated part of the orifinal value if
+  # that is really your intention.
+  #
+  # The 'users' and 'groups' sections contain lists of user and group
+  # definitions keyed to your image builders. They will inject commands
+  # into their respective image builders to create users and groups in
+  # the images. Use this mechanism to add users and groups as needed to
+  # image builds without having to store password hashes for users in
+  # your canned configs.
+  images:
+    # The 'build_order' list specifies the order in which images need to
+    # be built to handle dependencies in layered builds. All images that
+    # are not listed in the build order will be assumed to only have
+    # dependencies on those listed and will be built in an arbitrary
+    # order following completion of the specified ordered builds.
+    build_order:
+      - rocky-base-9
+      - compute-base-rocky9
+    # Active specifies the image that is to be used for booting compute
+    # nodes with this configuration. Override it to select a different
+    # active image.
+    #
+    # XXX - in the future we will want to tie different boot images to
+    #       different node groups. This is not supported yet, but it
+    #       probably will be in the future. For now, this works for what
+    #       we do.
+    active: compute-debug-rocky9
+    builders:
+      rocky-base-9:
+        options:
+          layer_type: 'base'
+          name: 'rocky-base'
+          publish_tags: '9'
+          pkg_manager: 'dnf'
+          parent: 'scratch'
+          # NOTE: the publish_registry setting here may be used by other
+          #       image builders as their 'parent' URL. Make sure if you
+          #       change this you change those items as well.
+          publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+          registry_opts_push:
+            - '--tls-verify=false'
+        repos:
+        - alias: 'Rocky_9_BaseOS'
+          url: 'https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/'
+          gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
+        - alias: 'Rocky_9_AppStream'
+          url: 'https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/'
+          gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
+        package_groups:
+        - 'Minimal Install'
+        - 'Development Tools'
+        packages:
+        - chrony
+        - cloud-init
+        - dracut-live
+        - kernel
+        - rsyslog
+        - sudo
+        - wget
+        cmds:
+        - cmd: 'dracut --add "dmsquash-live livenet network-manager" --kver $(basename /lib/modules/*) -N -f --logfile /tmp/dracut.log 2>/dev/null'
+        - cmd: 'echo DRACUT LOG:; cat /tmp/dracut.log'
+      compute-base-rocky9:
+        options:
+          layer_type: base
+          name: compute-base
+          publish_tags:
+          - 'rocky9'
+          pkg_manager: dnf
+          # NOTE: this uses the registry publication path in the
+          #       'rocky-base-9' image builder. Make sure if you change
+          #       that you change this as well.
+          parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/rocky-base:9'
+          registry_opts_pull:
+          - '--tls-verify=false'
+
+          # Publish SquashFS image to local S3
+          publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
+          s3_prefix: 'compute/base/'
+          s3_bucket: 'boot-images'
+          # Publish OCI image to container registry
+          #
+          # This is the only way to be able to re-use this image as
+          # a parent for another image layer.
+          #
+          # NOTE: the publish_registry setting here may be used by other
+          #       image builders as their 'parent' URL. Make sure if you
+          #       change this you change those items as well.
+          publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+          registry_opts_push:
+          - '--tls-verify=false'
+
+        repos:
+        - alias: 'Epel9'
+          url: 'https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/'
+          gpg: 'https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9'
+        packages:
+        - boxes
+        - cowsay
+        - figlet
+        - fortune-mod
+        - git
+        - nfs-utils
+        - tcpdump
+        - traceroute
+        - vim
+      compute-debug-rocky9:
+        options:
+          layer_type: base
+          name: compute-debug
+          publish_tags:
+          - 'rocky9'
+          pkg_manager: dnf
+          # NOTE: this uses the registry publication path in the
+          #       'compute-base-rocky9' image builder. Make sure if you
+          #       change that you change this as well.
+          parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/compute-base:rocky9'
+          registry_opts_pull:
+          - '--tls-verify=false'
+
+          # Publish to local S3
+          publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
+          s3_prefix: 'compute/debug/'
+          s3_bucket: 'boot-images'
+        packages:
+        - shadow-utils
+    groups:
+      compute-debug-rocky9:
+        - name: testgroup
+        # Wheel is probably already there, but, since we are going to
+        # use it explicitly, and we are adding it using '-f' it is safer
+        # to have it here than not to have it.
+        - name: wheel
+    users:
+      compute-debug-rocky9:
+      - name: testuser
+        primary_group: wheel
+        supplementary_groups:
+        - testgroup
+        # NOTE: if the password field is null or omitted, a random
+        #       password will be generated and its MD5 hash will be
+        #       placed here. The random password plaintext will NOT be
+        #       recorded anywhere. If a known password is to be used,
+        #       override this setting with the MD5 hash of that known
+        #       password (it is not recommended to publish that hash
+        #       anywhere).
+        password: null

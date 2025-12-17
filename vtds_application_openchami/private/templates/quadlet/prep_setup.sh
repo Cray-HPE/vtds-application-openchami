@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -148,6 +148,10 @@ function patch_coredns() {
     sudo sed -i \
          -e "/^Volume=.*Corefile$/s--${replacement}-" \
          /etc/containers/systemd/coresmd-coredns.container
+}
+
+function yaml_to_json() {
+    python3 -c 'import yaml, json, sys; json.dump(yaml.safe_load(sys.stdin), sys.stdout, indent=2)'
 }
 
 # Some useful variables that can be templated

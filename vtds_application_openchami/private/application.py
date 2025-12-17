@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,9 @@
 from ipaddress import ip_network
 import re
 from tempfile import NamedTemporaryFile
-from uuid import uuid4
+
+from passlib.hash import md5_crypt
+from passlib import pwd
 
 from vtds_base import (
     info_msg,
@@ -467,7 +469,9 @@ class Application(ApplicationAPI):
 
     def __tpl_data(self):
 
-        """Return a dictionary for use in rendering files to be
+        """Template Data Collector
+
+        Return a dictionary for use in rendering files to be
         shipped to the host node(s) for deployment based on the
         Application layer configuration.
 
@@ -625,7 +629,10 @@ class Application(ApplicationAPI):
         )
 
     def __tpl_data_quadlet_bmcs(self):
-        """Construct the 'bmcs' element of the quadlet system template
+        """
+        Template Data Collector
+
+        Construct the 'bmcs' element of the quadlet system template
         data.
 
         """
@@ -701,7 +708,10 @@ class Application(ApplicationAPI):
         }
 
     def __tpl_data_quadlet_nodes(self):
-        """Construct the 'nodes' element of the quadlet system
+        """
+        Template Data Collector
+
+        Construct the 'nodes' element of the quadlet system
         template data.
 
         """
@@ -776,7 +786,10 @@ class Application(ApplicationAPI):
         ]
 
     def __tpl_data_quadlet_managed_macs(self):
-        """Get the list of MAC addresses for Manaaged Nodes on their
+        """
+        Template Data Collector
+
+        Get the list of MAC addresses for Manaaged Nodes on their
         networks.
 
         """
@@ -811,7 +824,7 @@ class Application(ApplicationAPI):
         # simply use them...
         host_config = self.config['host']
         host_network = host_config['network']
-        host_node_class = host_config["node_class"]
+        host_node_class = host_config['node_class']
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
         virtual_networks = self.stack.get_cluster_api().get_virtual_networks()
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
@@ -825,7 +838,10 @@ class Application(ApplicationAPI):
         return virtual_blades.blade_ip(host_blade_class, 0, blade_interconnect)
 
     def __tpl_data_quadlet_hosting_cfg(self):
-        """Get the configuration for hosting nodes under management by
+        """
+        Template Data Collector
+
+        Get the configuration for hosting nodes under management by
         OpenCHAMI on this system. This includes the management network
         IP setup, the management node IP and FQDN within the cluster,
         whether or not libvirt hosting of a "Compute Node" on the
@@ -872,8 +888,37 @@ class Application(ApplicationAPI):
             },
         }
 
+    # pylint: disable=invalid-name
+    def __tpl_data_quadlet_image_builders(self):
+        """
+        Template Data Collector
+
+        Return a list of image builder tags that can be used to
+        compose image builder file names in the order in which the
+        builds are to be performed.
+
+        """
+        build_order = self.config.get('images', {}).get('build_order', [])
+        image_builder_tags = list(
+            self.config.get('images', {}).get('builders', {}).keys()
+        )
+        for builder in build_order:
+            if builder not in image_builder_tags:
+                raise ContextualError(
+                    "image build order contains an image tag '%s' that is not "
+                    "one of the supplied image builders" % builder
+                )
+        return build_order + [
+            builder
+            for builder in image_builder_tags
+            if builder not in build_order
+        ]
+
     def __tpl_data_quadlet(self):
-        """Construct the template data dictionary used for building
+        """
+        Template Data Collector
+
+        Construct the template data dictionary used for building
         templated deployment files for the Quadlet based mode of
         deployment.
 
@@ -883,10 +928,16 @@ class Application(ApplicationAPI):
         tpl_data['managed_macs'] = self.__tpl_data_quadlet_managed_macs()
         tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
         tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
+        tpl_data['image_builders'] = self.__tpl_data_quadlet_image_builders()
+        tpl_data['active_image'] = (
+            self.config.get('images', {}).get('active', 'UNSPECIFIED')
+        )
         return tpl_data
 
     def __tpl_data_bare(self):
-        """Construct the template data dictionary used for building
+        """Template Data Collector
+
+        Construct the template data dictionary used for building
         templated deployment files for the Bare System mode of
         deployment.
 
@@ -1030,6 +1081,80 @@ class Application(ApplicationAPI):
                     node_class, instance, node_xname
                 )
 
+    @staticmethod
+    def __generate_groupadd_cmd(group):
+        """Given a 'group' description from the 'images' section,
+        compute a 'groupadd' command and return it as a command
+        dictionary for the builder.
+
+        """
+        name = group.get('name', None)
+        if name is None:
+            raise ContextualError(
+                "group entry '%s' in image section is missing its 'name' "
+                "setting" % (str(group))
+            )
+        return {'cmd': "groupadd -f %s" % name}
+
+    @staticmethod
+    def __user_password(user):
+        """Produce an argument for the 'useradd' -p option, either the
+        value found in the config if it is not None or missing, or a
+        generated and MD5 hashed password hash if none is specified
+        and return the string.
+
+        """
+        password = user.get('password', None)
+        return password if password is not None else md5_crypt.hash(
+            pwd.genword(length=20)
+        )
+
+    @classmethod
+    def __generate_useradd_cmd(cls, user):
+        """Given a 'user' description from the 'images' section,
+        compute a 'useradd' command and return it as a command
+        dictionary for the builder.
+
+        """
+        name = user.get('name', None)
+        if name is None:
+            raise ContextualError(
+                "user entry '%s' in image section is missing its 'name' "
+                "setting" % (str(user))
+            )
+        cmd = "useradd -m"
+        cmd += "-G %s" % ','.join(user['supplementary_groups']) if user.get(
+            'supplementary_groups', []
+        ) else ""
+        cmd += " -g %s" % user.get('primary_group', "")
+        cmd += " -p %s" % cls.__user_password(user)
+        return {"cmd": cmd}
+
+    def __prepare_image_configs(self):
+        """Go through the image builders and add commands to add users
+        and groups as needed to the builders so that the builders will
+        build correctly. Return an 'images' section containing the new
+        content.
+
+        """
+        images = self.config['images']
+        builders = images.get('builders', {})
+        for name, content in builders.items():
+            commands = content.get('cmds', [])
+            groups = images.get('groups', {}).get(name, [])
+            for group in groups:
+                # Put the commands to add groups first so we can use
+                # the groups in any subsequent commands
+                commands.insert(0, self.__generate_groupadd_cmd(group))
+            users = images.get('users', {}).get(name, [])
+            for user in users:
+                # Put the commands to add users next so we can use the
+                # users in any subsequent commands. Any configuration
+                # supplied commands will come after that.
+                commands.insert(0, self.__generate_useradd_cmd(user))
+            content['cmds'] = commands
+        return images
+
     def consolidate(self):
         # Before preparing to ship files, make sure that the node
         # xnames have been installed in the cluster layer for us to
@@ -1053,9 +1178,10 @@ class Application(ApplicationAPI):
         for _, network in discovery_networks.items():
             password = network.get('redfish_password', None)
             network['redfish_password'] = (
-                password if password is not None else str(uuid4())
+                password if password is not None else pwd.genword(length=20)
             )
         self.config['discovery_networks'] = filtered_discovery_networks
+        self.config['images'] = self.__prepare_image_configs()
 
     def prepare(self):
         self.prepared = True
