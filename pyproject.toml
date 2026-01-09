@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -42,6 +42,8 @@ dependencies = [
     'pyyaml~=6.0',
     # vtds base libraries - this comment reduces conflicts in dependabot PRs
     'vtds_base~=0.0',
+    # passlib for composing and hashing user passwords
+    'passlib~=1.7',
 ]
 
 dynamic = ['version']

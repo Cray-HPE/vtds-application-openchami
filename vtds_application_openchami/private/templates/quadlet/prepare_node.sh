@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,8 @@ OPENCHAMI_FILES=(
     "boot-compute-debug.yaml"
     "Corefile"
     "containers.conf"
+    "s3-public-read-boot-images.json"
+    "s3-public-read-efi.json"
     "prep_setup.sh"
 )
 # These files need to have their copyright comments stripped from them
@@ -43,6 +45,7 @@ OPENCHAMI_FILES=(
 STRIP_COMMENT_FILES=(
     "s3-public-read-boot-images.json"
     "s3-public-read-efi.json"
+    "bmc_info.json"    # Do not put this in ~rocky/openchami-files
 )
 
 
@@ -73,12 +76,6 @@ switch_dns "${MANAGEMENT_EXT_NAMESERVER}" "${CLUSTER_DOMAIN}" "${MANAGEMENT_HEAD
 # This is a management node, so set up OpenCHAMI and get it running and
 # initialized
 PACKAGES="\
-{%- if hosting_config.cohost.enable %}
-        libvirt\
-        qemu-kvm\
-        virt-install\
-        virt-manager\
-{%- endif %}
         dnsmasq\
         podman\
         buildah\
@@ -93,30 +90,42 @@ dnf -y check-update || true
 dnf -y install ${PACKAGES}
 dnf -y install epel-release
 dnf -y install s3cmd
-{%- if hosting_config.cohost.enable %}
-systemctl enable --now libvirtd
-{%- endif %}
 if ! getent group rocky; then
     groupadd rocky
 fi
 if ! getent passwd rocky; then
-{%- if hosting_config.cohost.enable %}
-    useradd -g rocky -G libvirt rocky
-{%- else %}
     useradd -g rocky rocky
-{%- endif %}
 fi
 # Remove rocky from /etc/sudoers and then put it back with NOPASSWD access
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
+# Set the interface name in coredhcp.yaml
+sed -i \
+    -e "s/::MGMT_NET_HEAD_IFNAME::/${MGMT_NET_HEAD_IFNAME}/g" \
+    coredhcp.yaml
+
+# Strip comments out of prepared data files as needed.
+for file in "${STRIP_COMMENT_FILES[@]}"; do
+    sed -i \
+        -e "/^[[:blank:]]*#/d" \
+        -e "s/[[:blank:]]*#.*$//" \
+        "${file}"
+done
+
+# Copy the BMC information into /etc/vtds and make sure it is not
+# publicly readable since it contains RedFish passwords for BMCs.
+chmod 600 bmc_info.json
+chown root:root bmc_info.json
+mkdir -p /etc/vtds
+cp bmc_info.json /etc/vtds/bmc_info.json
+chmod 600 /etc/vtds/bmc_info.json
+chown root:root /etc/vtds/bmc_info.json
+
 # Copy prepared data files to the 'rocky' user
 mkdir -p ~rocky/openchami-files
 for file in "${OPENCHAMI_FILES[@]}"; do
     cp "${file}" ~rocky/openchami-files/"${file}"
-done
-for file in "${STRIP_COMMENT_FILES[@]}"; do
-    grep -v "^#" "${file}" > ~rocky/openchami-files/"${file}"
 done
 chown -R rocky: ~rocky/openchami-files
 

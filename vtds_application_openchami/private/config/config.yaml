@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -46,7 +46,7 @@ application:
   # hosted and the Virtual Node class whose instances will run
   # OpenCHAMI. Deployment will be done to all nodes in that class (for a
   # single instance of OpenCHAMI the cluster configuration should
-  # specify only one instance of the host node class.
+  # specify only one instance of the host node class).
   host:
     # The Virtual Network (named in the Cluster layer configuration) on
     # which OpenCHAMI will be hosted.
@@ -54,6 +54,46 @@ application:
     # The node class (named in the Cluster layer configuration) on which
     # OpenCHAMI will be deployed and run.
     node_class: host_node
+    # The host nodename will identify the host node within the cluster's
+    # DNS domain. For example, if your cluster has the domain name
+    # 'openchami.cluster' and the host node name specified here is
+    # 'demo' then the head node of the cluster will be set up as
+    #
+    #     demo.openchami.cluster.
+    #
+    # Those defaults are used here.
+    node_name: demo
+  # The cluster block contains configuration pertaining to the cluster
+  # as whole.
+  cluster:
+    # The cluster domain name is used for resolving the DNS names of
+    # nodes within the OpenCHAMI cluster.
+    domain_name: openchami.cluster
+  # There are two DNS servers used beyond the cluster DNS server that is
+  # automatically set up using smd-coredns. The first contains the
+  # resolution of the head node FQDN (example: demo.openchami.cluster)
+  # for use within the cluster and, ostensibly, outside the cluster. If
+  # this is not specified or NULL it is  filled in with the blade-local
+  # network IP address of the host Virtual Blade where the management
+  # node is hosted. If this is specified it should point to a DNS server
+  # somewhere that knows the head-node FQDN. The second is the public
+  # DNS server. Generally speaking it is good to use whatever DNS server
+  # might be provided by the platform layer, if such a thing
+  # exists. Otherwise configure any public DNS server IP here.
+  dns:
+    # For the site DNS server we generally use the host blade network IP
+    # address of the Virtual Blade hosting the management node. This is
+    # a likely value for that. If yours differs, override this value in
+    # your configuration.
+    site: 10.234.0.1
+    # this is IP of the GCP metadata server override which works for GCP
+    # as a provider. If another provider is used, override this in your
+    # configuration overlay.
+    #
+    # XXX - it might be beter to move the setting for this down into the
+    #       provider layer and pull it from there using a new provider
+    #       layer API, but this will serve for now.
+    public: 169.254.169.254
   # The discovery_networks map is a collection of network specifications
   # for networks on which OpenCHAMI (currently Magellan) may do
   # discovery of RedFish endpoints. A discovery network may be either a
@@ -68,18 +108,6 @@ application:
   # All of the valid networks specified here will be used for discovery
   # of RedFish endpoints when OpenCHAMI is deployed.
   discovery_networks:
-    internal:
-      network_cidr: 172.25.0.0/24
-      network_name: null
-      # Username and password used by RIE for redfish emulation.  The
-      # password here is not really a secret because it does not grant
-      # actual access to anything of interest.
-      redfish_username: root
-      redfish_password: root_password
-      # On the internal network, Virtual Blades are meaningless, so no
-      # blade classes are listed here...
-      blade_classes: []
-      
     hardware_management:
       network_cidr: null
       network_name: hardware_management
@@ -89,89 +117,174 @@ application:
       # the configuration automatically if it is null. Override it at your
       # own risk if you want a known value.
       redfish_username: root
-      redfish_password: root_password
+      redfish_password: null
       # The list of Virtual Blade classes here tells the management node
       # deployment which blade classes to include in the set of RedFish
       # endpoints that need mappings to xnames.
       blade_classes:
         - host-blade
-  # The 'rie_services' section configures the RIE (Redfish Interface
-  # Emulator) instances that will be set up in the OpenCHAMI
-  # deployment. RIE instances provide simulated RedFish endpoints for
-  # discovery and node manipulation. They do not represent any actual
-  # BMCs or Node resources.  They are useful for standalone testing of
-  # OpenCHAMI without the need for actual Compute nodes and so forth.
+  # The 'images' section contains 'builders', 'users' and 'groups' used
+  # to set up managed node system images for use with OpenCHAMI.
   #
-  # The first RIE service configuration is annotated to help with
-  # setting up an RIE service. The rest are left without annotation to
-  # avoid duplication.
-  rie_services:
-    rf-x0c0s1b0:
-      # delete tells vTDS whether or not to delete this RIE service from
-      # the configuration before bringing up RIE services. Set this to
-      # true to remove this RIE service from the OpenCHAMI system
-      delete: false
-      # container_name specifies the name of the container to be be run
-      # to start this RIE service.
-      container_name: rf-x0c0s1b0
-      # hostname provides the hostname on the RIE network of the service
-      hostname: x0c0s1b0
-      # Image specifies the RIE container image to be used to make this
-      # RIE service.
-      image: ghcr.io/openchami/csm-rie:latest
-      # The following environment variables tell RIE what to set up on
-      # this service
-      environment:
-        - MOCKUPFOLDER=EX235a
-        - MAC_SCHEMA=Mountain
-        - XNAME=x0c0s1b0
-        - PORT=443
-      # networks indicates what networks the RIE service will be present
-      # on within the OpenCHAMI cluster and provides the hostname
-      # aliases for this RIE service
-      networks:
-        internal:
-          aliases:
-            - x0c0s1b0
-    rf-x0c0s2b0:
-      delete: false
-      container_name: rf-x0c0s2b0
-      hostname: x0c0s2b0
-      image: ghcr.io/openchami/csm-rie:latest
-      environment:
-        - MOCKUPFOLDER=EX235a
-        - MAC_SCHEMA=Mountain
-        - XNAME=x0c0s2b0
-        - PORT=443
-      networks:
-        internal:
-          aliases:
-            - x0c0s2b0
-    rf-x0c0s3b0:
-      delete: false
-      container_name: rf-x0c0s3b0
-      hostname: x0c0s3b0
-      image: ghcr.io/openchami/csm-rie:latest
-      environment:
-        - MOCKUPFOLDER=EX235a
-        - MAC_SCHEMA=Mountain
-        - XNAME=x0c0s3b0
-        - PORT=443
-      networks:
-        internal:
-          aliases:
-            - x0c0s3b0
-    rf-x0c0s4b0:
-      delete: false
-      container_name: rf-x0c0s4b0
-      hostname: x0c0s4b0
-      image: ghcr.io/openchami/csm-rie:latest
-      environment:
-        - MOCKUPFOLDER=EX235a
-        - MAC_SCHEMA=Mountain
-        - XNAME=x0c0s4b0
-        - PORT=443
-      networks:
-        internal:
-          aliases:
-            - x0c0s4b0
+  # The 'builders' sub-section contains the YAML build configurations
+  # (image builders) for managed node images you want built for your
+  # system. Unlike the rest of the content in the Application layer
+  # configuration, each 'builder' is given as the unconstrained YAML
+  # that will be interpreted by the image build tool. Values in this
+  # YAML can be templated with configuration derived values, which will
+  # be filled out with configuration derived content during deployment
+  # of the generated image builder file. The most commonly template
+  # variable used in an image builder is the fully qualified domain name
+  # of the OpenCHAMI management (head) node:
+  #
+  #    '{{ hosting_config.management.net_head_fqdn }}'
+  #
+  # which is generally used to compose the base URLs for S3 and Registry
+  # sources and destinations. When modifying templated fields, be
+  # careful to only remove the templated part of the orifinal value if
+  # that is really your intention.
+  #
+  # The 'users' and 'groups' sections contain lists of user and group
+  # definitions keyed to your image builders. They will inject commands
+  # into their respective image builders to create users and groups in
+  # the images. Use this mechanism to add users and groups as needed to
+  # image builds without having to store password hashes for users in
+  # your canned configs.
+  images:
+    # The 'build_order' list specifies the order in which images need to
+    # be built to handle dependencies in layered builds. All images that
+    # are not listed in the build order will be assumed to only have
+    # dependencies on those listed and will be built in an arbitrary
+    # order following completion of the specified ordered builds.
+    build_order:
+      - rocky-base-9
+      - compute-base-rocky9
+    # Active specifies the image that is to be used for booting compute
+    # nodes with this configuration. Override it to select a different
+    # active image.
+    #
+    # XXX - in the future we will want to tie different boot images to
+    #       different node groups. This is not supported yet, but it
+    #       probably will be in the future. For now, this works for what
+    #       we do.
+    active: compute-debug-rocky9
+    builders:
+      rocky-base-9:
+        options:
+          layer_type: 'base'
+          name: 'rocky-base'
+          publish_tags: '9'
+          pkg_manager: 'dnf'
+          parent: 'scratch'
+          # NOTE: the publish_registry setting here may be used by other
+          #       image builders as their 'parent' URL. Make sure if you
+          #       change this you change those items as well.
+          publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+          registry_opts_push:
+            - '--tls-verify=false'
+        repos:
+        - alias: 'Rocky_9_BaseOS'
+          url: 'https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/'
+          gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
+        - alias: 'Rocky_9_AppStream'
+          url: 'https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/'
+          gpg: 'https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9'
+        package_groups:
+        - 'Minimal Install'
+        - 'Development Tools'
+        packages:
+        - chrony
+        - cloud-init
+        - dracut-live
+        - kernel
+        - rsyslog
+        - sudo
+        - wget
+        cmds:
+        - cmd: 'dracut --add "dmsquash-live livenet network-manager" --kver $(basename /lib/modules/*) -N -f --logfile /tmp/dracut.log 2>/dev/null'
+        - cmd: 'echo DRACUT LOG:; cat /tmp/dracut.log'
+      compute-base-rocky9:
+        options:
+          layer_type: base
+          name: compute-base
+          publish_tags:
+          - 'rocky9'
+          pkg_manager: dnf
+          # NOTE: this uses the registry publication path in the
+          #       'rocky-base-9' image builder. Make sure if you change
+          #       that you change this as well.
+          parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/rocky-base:9'
+          registry_opts_pull:
+          - '--tls-verify=false'
+
+          # Publish SquashFS image to local S3
+          publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
+          s3_prefix: 'compute/base/'
+          s3_bucket: 'boot-images'
+          # Publish OCI image to container registry
+          #
+          # This is the only way to be able to re-use this image as
+          # a parent for another image layer.
+          #
+          # NOTE: the publish_registry setting here may be used by other
+          #       image builders as their 'parent' URL. Make sure if you
+          #       change this you change those items as well.
+          publish_registry: '{{ hosting_config.management.net_head_fqdn }}:5000/demo'
+          registry_opts_push:
+          - '--tls-verify=false'
+
+        repos:
+        - alias: 'Epel9'
+          url: 'https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/'
+          gpg: 'https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-9'
+        packages:
+        - boxes
+        - cowsay
+        - figlet
+        - fortune-mod
+        - git
+        - nfs-utils
+        - tcpdump
+        - traceroute
+        - vim
+      compute-debug-rocky9:
+        options:
+          layer_type: base
+          name: compute-debug
+          publish_tags:
+          - 'rocky9'
+          pkg_manager: dnf
+          # NOTE: this uses the registry publication path in the
+          #       'compute-base-rocky9' image builder. Make sure if you
+          #       change that you change this as well.
+          parent: '{{ hosting_config.management.net_head_fqdn }}:5000/demo/compute-base:rocky9'
+          registry_opts_pull:
+          - '--tls-verify=false'
+
+          # Publish to local S3
+          publish_s3: 'http://{{ hosting_config.management.net_head_fqdn }}:9000'
+          s3_prefix: 'compute/debug/'
+          s3_bucket: 'boot-images'
+        packages:
+        - shadow-utils
+    groups:
+      compute-debug-rocky9:
+        - name: testgroup
+        # Wheel is probably already there, but, since we are going to
+        # use it explicitly, and we are adding it using '-f' it is safer
+        # to have it here than not to have it.
+        - name: wheel
+    users:
+      compute-debug-rocky9:
+      - name: testuser
+        primary_group: wheel
+        supplementary_groups:
+        - testgroup
+        # NOTE: if the password field is null or omitted, a random
+        #       password will be generated and its MD5 hash will be
+        #       placed here. The random password plaintext will NOT be
+        #       recorded anywhere. If a known password is to be used,
+        #       override this setting with the MD5 hash of that known
+        #       password (it is not recommended to publish that hash
+        #       anywhere).
+        password: null

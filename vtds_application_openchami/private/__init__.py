@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -180,6 +180,13 @@ QUADLET_MANAGEMENT_NODE_FILES = [
         False,
     ),
     (
+        template('quadlet/bmc_info.json'),
+        home('bmc_info.json'),
+        '600',
+        'node_BMC_settings',
+        False,
+    ),
+    (
         template('quadlet/prepare_node.sh'),
         home('prepare_node.sh'),
         '755',
@@ -210,6 +217,13 @@ BLADE_FILES = [
         '644',
         'sushy-emulator-unit-file',
         False
+    ),
+    (
+        template('quadlet/bmc_info.json'),
+        home('bmc_info.json'),
+        '600',
+        'blade_BMC_settings',
+        False,
     ),
     (
         template('blade/prepare_blade.sh'),

@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -80,6 +80,18 @@ function managed_macs() {
 EOF
 }
 
+function find_if_by_addr() {
+    addr=${1}; shift || fail "no ip addr supplied when looking up ip interface"
+    ip --json a | \
+        jq -r "\
+          .[] | .ifname as \$ifname | \
+          .addr_info | .[] | \
+              select( .family == \"inet\") | \
+              select( (.local) == \"${addr}\" ) | \
+              \"\(\$ifname)\" \
+        "
+}
+
 function switch_dns() {
     # This function uses nmcli to find and remove all nameservers from
     # the current configuration and then to add back only the local
@@ -138,18 +150,14 @@ function patch_coredns() {
          /etc/containers/systemd/coresmd-coredns.container
 }
 
+function yaml_to_json() {
+    python3 -c 'import yaml, json, sys; json.dump(yaml.safe_load(sys.stdin), sys.stdout, indent=2)'
+}
+
 # Some useful variables that can be templated
 MANAGEMENT_HEADNODE_FQDN="{{ hosting_config.management.net_head_fqdn }}"
 CLUSTER_DOMAIN="{{ hosting_config.management.net_head_domain }}"
 MANAGEMENT_HEADNODE_IP="{{ hosting_config.management.net_head_ip }}"
-MANAGEMENT_NET_LENGTH="{{ hosting_config.management.prefix_len }}"
-MANAGEMENT_NET_MASK="{{ hosting_config.management.netmask }}"
 MANAGEMENT_EXT_NAMESERVER="{{ hosting_config.management.net_head_dns_server }}"
 MANAGEMENT_NODE_CLASS="{{ host_node_class }}"
-
-{%- if hosting_config.cohost.enable %}
-LIBVIRT_NET_IP="{{ hosting_config.cohost.net_head_ip }}"
-LIBVIRT_NET_LENGTH="{{ hosting_config.cohost.prefix_len }}"
-LIBVIRT_NET_MASK="{{ hosting_config.cohost.netmask }}"
-{%- endif %}
-
+MGMT_NET_HEAD_IFNAME="$(find_if_by_addr "${MANAGEMENT_HEADNODE_IP}")"

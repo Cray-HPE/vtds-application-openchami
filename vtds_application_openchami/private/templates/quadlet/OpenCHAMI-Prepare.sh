@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -43,9 +43,9 @@ source "${SCRIPT_DIR}/openchami-files/build-image.sh"
 #       reflect their more generalized natures. For now this is
 #       accurate.
 IMAGE_BUILDERS=(
-    "rocky-base-9.yaml"
-    "compute-base-rocky9.yaml"
-    "compute-debug-rocky9.yaml"
+    {%- for builder in image_builders %}
+    {{ builder }}.yaml
+    {%- endfor %}
 )
 
 ROCKY_DIRS=(
@@ -85,25 +85,6 @@ done
 # to reach OpenCHAMI services
 sudo sysctl -w net.ipv4.ip_forward=1
 
-{%- if hosting_config.cohost.enable %}
-# Create a virtual bridged network within libvirt to act as the node
-# local network used by OpenCHAMI services.
-echo "Setting up libvirt bridge network for OpenCHAMI"
-cat <<EOF > openchami-net.xml
-<network>
-  <name>openchami-net</name>
-  <bridge name="virbr-openchami" />
-  <forward mode='route'/>
-  <ip address="${LIBVIRT_NET_IP}" netmask="${LIBVIRT_NET_MASK}" />
-</network>
-EOF
-sudo virsh net-destroy openchami-net || true
-sudo virsh net-undefine openchami-net || true
-sudo virsh net-define openchami-net.xml
-sudo virsh net-start openchami-net
-sudo virsh net-autostart openchami-net
-
-{%- endif %}
 # Set up an /etc/hosts entry for the OpenCHAMI management head node so
 # we can use it for certs and for reaching the services.
 echo "Adding head node (${MANAGEMENT_HEADNODE_IP}) to /etc/hosts"
@@ -150,6 +131,10 @@ curl -L -o "$rpm_name" "$rpm_url"
 echo "Installing OpenCHAMI RPM"
 if systemctl status openchami.target; then
     sudo systemctl stop openchami.target
+    # Also remove any SMD or BSS data after
+    # giving the pods a chance to stop
+    sleep 5
+    sudo podman volume rm postgres-data
 fi
 sudo rpm -Uvh --reinstall "$rpm_name"
 
@@ -165,8 +150,6 @@ echo "Setting up CoreDHCP Configuration"
 sudo cp /root/coredhcp.yaml /etc/openchami/configs/coredhcp.yaml
 
 # Set up Cluster SSL Certs for the
-#
-# XXX - this needs to be templated to use the configured FQDN of the head node
 echo "Setting up cluster SSL certs for OpenCHAMI"
 sudo openchami-certificate-update update "${MANAGEMENT_HEADNODE_FQDN}"
 
@@ -183,8 +166,6 @@ echo "Installing OpenCHAMI CLI (ochami) RPM"
 sudo dnf install -y ./ochami.rpm
 
 # Configure the OpenCHAMI CLI client
-#
-# XXX- This needs to be templated to use the configured FQDN of the head node
 echo "Configuring OpenCHAMI CLI (ochami) Client"
 sudo rm -f /etc/ochami/config.yaml
 echo y | sudo ochami config cluster set --system --default demo \
@@ -242,15 +223,7 @@ if ! ${smd_running}; then
     fail "timeout waiting for SMD to start, openChami is not fully available"
 fi
 
-# Run the static node discovery (first delete any previously existing content)
-if [[ "$(ochami smd component get | jq ".Components | length")" -gt 0 ]]; then
-    echo y | ochami smd component delete --all
-    echo y | ochami smd compep delete --all
-    echo y | ochami smd iface delete --all
-    echo y | ochami smd rfe delete --all
-    echo y | ochami smd group delete --all
-    echo
-fi
+# Run the static node discovery
 ochami discover static $(discovery_version) -f yaml -d @/opt/workdir/nodes/nodes.yaml
 
 # Install and configure 'regctl'
@@ -270,17 +243,12 @@ for bucket in "${S3_PUBLIC_BUCKETS[@]}"; do
           --host-bucket="${MANAGEMENT_HEADNODE_IP}:9000"
 done
 
-# Build the Base Image
-echo "Building the Common Base OS Image"
-build-image /opt/workdir/images/rocky-base-9.yaml
-
-# Build the Compute Node Base Image
-echo "Building the Compute Node Base OS image"
-build-image /opt/workdir/images/compute-base-rocky9.yaml
-
-# Build the Compute Node Debug Image
-echo "Building the Compute Node Debug OS image"
-build-image /opt/workdir/images/compute-debug-rocky9.yaml
+# Build the node images...
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    BUILDER_FILE="/opt/workdir/images/${builder}"
+    echo "Building image from image builder '${BUILDER_FILE}'"
+    build-image "${BUILDER_FILE}"
+done
 
 # Make sure coresmd-coredns is running by now. If it is not, we have a
 # problem and we don't want to switch over to it...
@@ -295,27 +263,25 @@ switch_dns "${MANAGEMENT_HEADNODE_IP}" "${CLUSTER_DOMAIN}"
 export DEMO_ACCESS_TOKEN="$(sudo bash -lc 'gen_access_token')"
 
 # Create the boot configuration for the Compute node Debug image
-echo "Creating the debug boot configuration"
 cd /opt/workdir/boot
-generate-boot-config \
-    "compute/debug" \
-    "${MANAGEMENT_HEADNODE_IP}" \
-    $(managed_macs) | \
-    tee /opt/workdir/boot/boot-compute-debug.yaml
+for builder in "${IMAGE_BUILDERS[@]}"; do 
+    BUILDER_FILE="/opt/workdir/images/${builder}"
+    BOOT_CONFIG_FILE="/opt/workdir/boot/${builder}"
+    echo "Building boot configuration '${BOOT_CONFIG_FILE}'"
+    S3_PREFIX="$( \
+      yaml_to_json < "${BUILDER_FILE}" | jq -r '.options.s3_prefix' |
+      sed -e 's:/[[:blank:]]*$::' \
+    )"
+    generate-boot-config \
+        "${S3_PREFIX}" \
+        "${MANAGEMENT_HEADNODE_IP}" \
+        $(managed_macs) | \
+        tee "${BOOT_CONFIG_FILE}"
+done
 
-# Create the boot configuration for the Compute node Base image
-echo "Creating the base boot configuration"
-cd /opt/workdir/boot
-generate-boot-config \
-    "compute/base" \
-    "${MANAGEMENT_HEADNODE_IP}" \
-    $(managed_macs) | \
-    tee /opt/workdir/boot/boot-compute-base.yaml
-
-# Install the boot configuration for the debug kernel
 echo "Install boot configuration"
 ochami bss boot params set -f yaml \
-       -d @/opt/workdir/boot/boot-compute-debug.yaml
+       -d @/opt/workdir/boot/{{ active_image }}.yaml
 
 # Set up cloud-init for some basics...
 #
@@ -369,10 +335,6 @@ ochami cloud-init node set \
 # Now that all the images are in place, cloud-init is set up and the
 # managed nodes have been configured, go through and start them all
 # using RedFish curls.
-#
-# XXX - we need to add BMC user and BMC password to these actions, get
-#       from config and add to template. Then pick up here as the
-#       third and fourth args to 'power-on-node'
 {%- for node in nodes %}
-power-on-node "{{ node.xname }}" "{{ node.bmc_ip }}"
+power-on-node "{{ node.xname }}" "{{ node.bmc_xname }}"
 {%- endfor %}
