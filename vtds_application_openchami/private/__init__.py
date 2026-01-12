@@ -58,6 +58,13 @@ def home(filename):
 # Management node files for the bare system deployment mode
 BARE_MANAGEMENT_NODE_FILES = [
     (
+        template('quadlet/bmc_info.json'),
+        home('bmc_info.json'),
+        '600',
+        'node_BMC_settings',
+        False,
+    ),
+    (
         template('bare/prepare_node.sh'),
         home('prepare_node.sh'),
         '755',

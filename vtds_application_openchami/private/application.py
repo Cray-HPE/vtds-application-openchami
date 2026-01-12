@@ -62,7 +62,6 @@ class Application(ApplicationAPI):
         self.build_dir = build_dir
         self.prepared = False
         self.deploy_mode = None
-        self.deployment_files = None
         self.tpl_data = None
         self.tpl_data_calls = {
             'quadlet': self.__tpl_data_quadlet,
@@ -942,7 +941,10 @@ class Application(ApplicationAPI):
         deployment.
 
         """
-        return self.__tpl_data()
+        tpl_data = self.__tpl_data()
+        tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
+        tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
+        return tpl_data
 
     def __choose_tpl_data(self):
         """Pick the appropriate template data for the configured mode of
@@ -973,7 +975,7 @@ class Application(ApplicationAPI):
                 "modes are: %s" % (
                     self.deploy_mode,
                     self.__formatted_str_list(
-                        list(self.deployment_files.keys())
+                        list(deployment_files.keys())
                     )
                 )
             ) from err
@@ -1207,11 +1209,11 @@ class Application(ApplicationAPI):
         self.deploy_mode = (
             self.config.get('deployment', {}).get('mode', 'quadlet')
         )
-        self.deployment_files = self.__choose_deployment_files()
         self.tpl_data = self.__choose_tpl_data()
+        deployed_files = self.__choose_deployment_files()
 
         # Deploy the application to the cluster
-        blade_files, management_node_files = self.deployment_files
+        blade_files, management_node_files = deployed_files
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
         with virtual_blades.ssh_connect_blades() as connections:
             self.__deploy_files(connections, blade_files, 'host-blade')
