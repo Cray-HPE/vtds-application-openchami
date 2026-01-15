@@ -218,7 +218,7 @@ Virtual Blade will be a GCP instance and it will be called
 `host-blade-001`:
 
 ```
-gcloud compute --project hpe-openchami-tilly-3724 ssh --tunnel-throug-iap root@host-blade-001 
+gcloud compute --project hpe-openchami-tilly-3724 ssh --tunnel-through-iap root@host-blade-001
 ```
 
 Third you need to log into the management Virtual Node from the
