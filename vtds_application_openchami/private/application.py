@@ -38,7 +38,11 @@ from vtds_base import (
 )
 from vtds_base.layers.application import ApplicationAPI
 from vtds_base.layers.cluster import NodeSSHConnectionSetBase
-from . import deployment_files
+from . import (
+    deployment_files,
+    test_file_source,
+    test_file_dest,
+)
 
 
 class Application(ApplicationAPI):
@@ -931,6 +935,7 @@ class Application(ApplicationAPI):
         tpl_data['active_image'] = (
             self.config.get('images', {}).get('active', 'UNSPECIFIED')
         )
+        tpl_data['test_drivers'] = self.__test_drivers()
         return tpl_data
 
     def __tpl_data_bare(self):
@@ -1157,6 +1162,48 @@ class Application(ApplicationAPI):
             content['cmds'] = commands
         return images
 
+    def __test_files(self):
+        """Using the configuration compose a list of test related
+        files to be deployed to the management node.
+
+        """
+        testing = self.config.get('testing', {})
+        tests = testing.get('tests', {})
+        test_files = [
+            (
+                test_file_source(test_file['path']),
+                test_file_dest(test_file['path']),
+                test_file['mode'],
+                "test-%s-%s" % (test_key, file_key),
+                False       # Don't automatically run this file on deployment
+            )
+            for test_key, test in tests.items()
+            for file_key, test_file in test.get('files', {}).items()
+            if testing.get('enabled', False) and test.get('enabled', True)
+        ]
+        info_msg("test files: %s", str(test_files))
+        return test_files
+
+    def __test_drivers(self):
+        """Using the configuration compose a list of test drivers to
+        be run as part of deploying OpenCHAMI.
+
+        """
+        testing = self.config.get('testing', {})
+        tests = testing.get('tests', {})
+        test_drivers = [
+            test_file_dest(test_file['path'])
+            for test in tests.values()
+            for test_file in test.get('files', {}).values()
+            if (
+                testing.get('enabled', False) and
+                test.get('enabled', True) and
+                test_file.get('driver', False)
+            )
+        ]
+        info_msg("test files: %s", str(test_drivers))
+        return test_drivers
+
     def consolidate(self):
         # Before preparing to ship files, make sure that the node
         # xnames have been installed in the cluster layer for us to
@@ -1217,6 +1264,12 @@ class Application(ApplicationAPI):
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
         with virtual_blades.ssh_connect_blades() as connections:
             self.__deploy_files(connections, blade_files, 'host-blade')
+
+        # Add tests to the list of management node deployment files
+        # based on the testing configuration. Prepend them to the
+        # management node files so that they will all be there when
+        # the management deployment script arrives.
+        management_node_files = self.__test_files() + management_node_files
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
         host_node_class = self.config.get('host', {}).get('node_class')
         with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:

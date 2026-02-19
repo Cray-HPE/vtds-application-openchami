@@ -35,6 +35,11 @@ TEMPLATE_DIR_PATH = path_join(
     'templates',
 )
 
+TESTING_DIR_PATH = path_join(
+    dirname(__file__),
+    'cluster_tests'
+)
+
 
 def template(filename):
     """Translate a file name into a full path name to a file in the
@@ -50,6 +55,23 @@ def home(filename):
 
     """
     return path_join(separator, "root", filename)
+
+
+def test_file_source(filename):
+    """Translate a filename into a path in the python module where a test
+    file can be found.
+
+    """
+    return path_join(TESTING_DIR_PATH, filename)
+
+
+def test_file_dest(filename):
+    """Translate a filename or relative path into a full path on the
+    remote host that is the 'root' home directory and in the 'cluster_tests'
+    sub-tree.
+
+    """
+    return path_join(separator, "root", "cluster_tests", filename)
 
 
 # Templated files to be deployed to the management node: (source, dest,

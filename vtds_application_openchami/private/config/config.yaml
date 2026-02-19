@@ -288,3 +288,31 @@ application:
         #       password (it is not recommended to publish that hash
         #       anywhere).
         password: null
+  # The 'testing' section specifies tests that can be run as part of the
+  # 'deploy' action. These will run after the main deployment completes
+  # and before completion of the overall deploy. They are intended as a
+  # way to incorporate either sanity testing or integration testing into
+  # the deployment.
+  #
+  # Testing can be (and is, by default) disabled as a block. Each test
+  # is indexed by the name of the test and contains a brief description,
+  # a timeout value, and a dictionary of files used by the test,
+  # including the test driver. The test driver is identified by having a
+  # 'driver' flag set to 'true'. Each test can be individually enabled or
+  # disabled (enabled by default).
+  testing:
+    enabled: false
+    tests:
+      compute-node-ssh:
+        enabled: true
+        description: |
+          A simple test that waits for the compute nodes configured
+          within the OpenCHAMI cluster to become available and then
+          verifies that each one can be reached from the 'rocky' user on
+          the management (head) node using SSH.
+        files:
+          driver:
+            path: "compute_node_ssh/driver.sh"
+            mode: "755"
+            driver: true
+        timeout: 600
