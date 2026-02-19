@@ -24,6 +24,8 @@
 
 """
 from ipaddress import ip_network
+from os.path import dirname
+from os.path import join as path_join
 import re
 from tempfile import NamedTemporaryFile
 
@@ -33,12 +35,17 @@ from passlib import pwd
 from vtds_base import (
     info_msg,
     warning_msg,
+    error_msg,
     ContextualError,
     render_template_file,
 )
 from vtds_base.layers.application import ApplicationAPI
 from vtds_base.layers.cluster import NodeSSHConnectionSetBase
-from . import deployment_files
+from . import (
+    deployment_files,
+    test_file_source,
+    test_file_dest,
+)
 
 
 class Application(ApplicationAPI):
@@ -67,6 +74,9 @@ class Application(ApplicationAPI):
             'quadlet': self.__tpl_data_quadlet,
             'bare': self.__tpl_data_bare,
         }
+        self.tests = (
+            self.config.get('testing', {}).get('tests', {})
+        ) if self.config.get('testing', {}).get('enabled', False) else {}
 
     def __validate_host_info(self):
         """Run through the 'host' configuration and make sure it is
@@ -225,6 +235,72 @@ class Application(ApplicationAPI):
                     "validation error: OpenCHAMI layer configuration "
                     "discovery network '%s' has no RedFish password" % name
                 )
+
+    def __validate_tests(self):
+        """Make sure all tests are well formed. Each test must specify
+        at a minimum an entrypoint, a description, and a legitimate
+        timeout value. Also, if a test has dependencies, all the
+        dependencies must name existing tests.
+
+        """
+        for test_name, test in self.tests.items():
+            if 'description' not in test:
+                raise ContextualError(
+                    "validation error: test '%s' has no "
+                    "'description' field" % test_name
+                )
+            if 'timeout' not in test:
+                raise ContextualError(
+                    "validation error: test '%s' has no "
+                    "'timeout' field" % test_name
+                )
+            if not isinstance(test['timeout'], int):
+                raise ContextualError(
+                    "validation error: test '%s' has an invalid 'timeout' "
+                    "field '%s'" % (test_name, str(test['timeout']))
+                )
+            for dep in test.get('depends_on', []):
+                if dep not in self.tests:
+                    raise ContextualError(
+                        "validation error: test '%s' depends on undefined "
+                        "test '%s'" % (test_name, dep)
+                    )
+            files = test.get('files', None)
+            if files is None:
+                raise ContextualError(
+                    "validation error: test '%s' has no "
+                    "'files' sub-section which should be there to hold "
+                    "the test entrypoint file" % test_name
+                )
+            # Verify there is exactly on entrypoint for the test
+            entrypoints = [
+                entry
+                for entry in files.values()
+                if entry.get('entrypoint', False)
+            ]
+            if not entrypoints:
+                raise ContextualError(
+                    "validation error: test '%s' does not declare an "
+                    "entrypoint" % test_name
+                )
+            if len(entrypoints) > 1:
+                raise ContextualError(
+                    "validation error: test '%s' declares more than one "
+                    "entrypoint" % test_name
+                )
+            # Also verify that every file in the set of files has a
+            # 'path' and a 'mode'
+            for test_file_name, test_file in files.items():
+                if 'path' not in test_file:
+                    raise ContextualError(
+                        "validation error: test file '%s' in test '%s' does "
+                        "not have a 'path' field" % (test_file_name, test_name)
+                    )
+                if 'mode' not in test_file:
+                    raise ContextualError(
+                        "validation error: test file '%s' in test '%s' does "
+                        "not have a 'mode' field" % (test_file_name, test_name)
+                    )
 
     def __tagged_network(self, tag, validate):
         """Find the first network with a field in its
@@ -913,6 +989,22 @@ class Application(ApplicationAPI):
             if builder not in build_order
         ]
 
+    def __tpl_data_quadlet_openchami(self):
+        """Template Data Collector
+
+        Fill out the information about the OpenCHAMI Release
+        reppository for use in templates.
+
+        """
+        openchami = self.config.get('openchami', {})
+        openchami['url'] = openchami.get(
+            'url', "https://github.com/OpenCHAMI/release.git"
+        )
+        openchami['version'] = openchami.get(
+            'version', "main"
+        )
+        return openchami
+
     def __tpl_data_quadlet(self):
         """
         Template Data Collector
@@ -928,6 +1020,7 @@ class Application(ApplicationAPI):
         tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
         tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
         tpl_data['image_builders'] = self.__tpl_data_quadlet_image_builders()
+        tpl_data['openchami'] = self.__tpl_data_quadlet_openchami()
         tpl_data['active_image'] = (
             self.config.get('images', {}).get('active', 'UNSPECIFIED')
         )
@@ -986,6 +1079,21 @@ class Application(ApplicationAPI):
         deployment script(s).
 
         """
+        # Make a set (unique list) of directory names for the files we
+        # are going to deploy, and create the directories before we
+        # try to deploy the files.
+        parents = {
+            dirname(dest)
+            for _, dest, _, _,  _ in files
+        }
+        for parent in parents:
+            cmd = "mkdir -p %s" % parent
+            info_msg("creating remote directory '%s'" % parent)
+            connections.run_command(
+                cmd,
+                "create_parent-dir-%s-on" % parent.replace('/', '%')
+            )
+
         for source, dest, mode, tag, run in files:
             info_msg(
                 "copying '%s' to host-node node(s) '%s'" % (
@@ -1000,7 +1108,7 @@ class Application(ApplicationAPI):
                         tag, target
                     )
                 )
-            cmd = "chmod %s %s;" % (mode, dest)
+            cmd = "chmod %s %s" % (mode, dest)
             info_msg(
                 "chmod'ing '%s' to %s on host-node node(s)" % (dest, mode)
             )
@@ -1013,6 +1121,119 @@ class Application(ApplicationAPI):
                     cmd = "%s {{ blade_class }} {{ instance }}" % dest
                     info_msg("running '%s' on host-blade(s)" % cmd)
                 connections.run_command(cmd, "run-%s-on" % tag)
+
+    def __suppress_test(self, connections, test_name):
+        """Run a suppressed test script that will cause test results
+        that indicate that the test was suppressed because of
+        dependency failure and what dependency failed.
+
+        """
+        test = self.tests[test_name]
+        cmd = "su - rocky ~rocky/%s %s '%s' %s" % (
+            path_join("cluster_tests", "suppressed_test.sh"),
+            test_name,
+            test['description'].replace('\n', ' '),
+            " ".join(test['failed_deps'])
+        )
+        info_msg(
+            "TESTING: suppressing test due to "
+            "failed dependencies '%s'" % test_name
+        )
+        try:
+            connections.run_command(
+                cmd,
+                "TEST-CASE-%s-on" % test_name
+            )
+        except ContextualError as err:
+            error_msg(
+                "TESTING: suppressing test case '%s' failed: %s" % (
+                    test_name, str(err)
+                )
+            )
+        return False
+
+    def __run_test(self, connections, test_name):
+        """Run a test or recurse to its dependencies to run them.
+
+        """
+        test = self.tests[test_name]
+        # If the test is disabled, skip it but return success to allow
+        # it to fulfill dependencies. Do not evaluate dependencies of
+        # disabled tests.
+        if not test.get('enabled', True):
+            info_msg(
+                "TESTING: skipping test case '%s' because it is "
+                "disabled" % test_name
+            )
+            return True
+        # If the test has already run and passed, just return True, no
+        # need to run it again. This avoids re-running passed
+        # dependencies over and over.
+        if test.get('passed', False):
+            return True
+        # If the test has already failed just return False without
+        # running it. This avoids running failed dependencies over and
+        # over.
+        if test.get('failed', False):
+            return False
+        # If the test has already been suppressed because of a
+        # dependency failure just return without running it.
+        if test.get('failed_deps', []):
+            return False
+        for dep in test.get('depends_on', []):
+            if not self.__run_test(connections, dep):
+                test['failed_deps'] = test.get('failed_deps', []) + [dep]
+        # If any of the dependencies failed, run a remote command that
+        # causes a test log containing the fact that the test was
+        # suppressed and the list of failed dependencies.
+        if test.get('failed_deps', []):
+            return self.__suppress_test(connections, test_name)
+        # None of the dependencies failed, so execute the
+        cmd = "su - rocky %s %s %s '%s' %d" % (
+            # test['entrypoint'] was set up as a convenient shortcut in
+            # consolidate() so we can use it here. It is not in the
+            # configuration files.
+            path_join("~rocky", "cluster_tests", "driver.sh"),
+            path_join("~rocky", "cluster_tests", test['entrypoint']['path']),
+            test_name,
+            test['description'].replace('\n', ' '),
+            test['timeout']
+        )
+        info_msg("TESTING: running test '%s'" % test_name)
+        try:
+            connections.run_command(
+                cmd,
+                "TEST-CASE-%s-on" % test_name
+            )
+        except ContextualError as err:
+            error_msg(
+                "TESTING: test case '%s' failed: %s" % (
+                    test_name, str(err)
+                )
+            )
+            return False
+        test['passed'] = True
+        return True
+
+    def __run_all_tests(self, connections):
+        """Run the list of tests in dependency order. Test
+        dependencies are intended to try to ensure that operations
+        that are needed by one test have been vetted by another test,
+        not to set up the conditions for a test to run. All tests must
+        stand alone in terms of their entry requirements and any exit
+        cleanup activities. If a test encounters a dependency on
+        another test that is disabled, the disabled test will be
+        treated as though it ran successfully. Circular dependencies
+        are resolved by running the dependancy test when it is
+        encountered as a circular dependency with a warning issued to
+        identify the circular dependency.
+
+        """
+        results = [
+            self.__run_test(connections, test_name)
+            for test_name in self.tests
+        ]
+        return results
 
     def __set_node_xnames(self):
         """Compute and fill in XNAME node names for all nodes on
@@ -1157,6 +1378,26 @@ class Application(ApplicationAPI):
             content['cmds'] = commands
         return images
 
+    def __test_files(self):
+        """Using the configuration compose a list of test related
+        files to be deployed to the management node.
+
+        """
+        test_files = [
+            (
+                test_file_source(test_file['path']),
+                test_file_dest(test_file['path']),
+                test_file['mode'],
+                "test-%s-%s" % (test_key, file_key),
+                False       # Don't automatically run this file on deployment
+            )
+            for test_key, test in self.tests.items()
+            for file_key, test_file in test.get('files', {}).items()
+            if test.get('enabled', True)
+        ]
+        info_msg("test files: %s" % str(test_files))
+        return test_files
+
     def consolidate(self):
         # Before preparing to ship files, make sure that the node
         # xnames have been installed in the cluster layer for us to
@@ -1184,6 +1425,16 @@ class Application(ApplicationAPI):
             )
         self.config['discovery_networks'] = filtered_discovery_networks
         self.config['images'] = self.__prepare_image_configs()
+        # Go through the tests to be run and plug in a shortcut
+        # 'entrypoint' field that holds the test entrypoint file
+        # information for each one. If we passed validate() we know
+        # there is an 'entrypoint' in each test configured, so there
+        # is no need to further validate this.
+        for test in self.tests.values():
+            for test_file in test['files'].values():
+                if test_file.get('entrypoint', False):
+                    test['entrypoint'] = test_file
+                    break
 
     def prepare(self):
         self.prepared = True
@@ -1197,6 +1448,7 @@ class Application(ApplicationAPI):
         self.__validate_host_info()
         self.__validate_cluster_info()
         self.__validate_discovery_networks()
+        self.__validate_tests()
 
     def deploy(self):
         if not self.prepared:
@@ -1217,10 +1469,20 @@ class Application(ApplicationAPI):
         virtual_blades = self.stack.get_provider_api().get_virtual_blades()
         with virtual_blades.ssh_connect_blades() as connections:
             self.__deploy_files(connections, blade_files, 'host-blade')
+
+        # Add tests to the list of management node deployment files
+        # based on the testing configuration. Prepend them to the
+        # management node files so that they will all be there when
+        # the management deployment script arrives.
+        management_node_files = self.__test_files() + management_node_files
         virtual_nodes = self.stack.get_cluster_api().get_virtual_nodes()
         host_node_class = self.config.get('host', {}).get('node_class')
         with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
             self.__deploy_files(connections, management_node_files)
+
+        # Run the set of enabled tests, if any, on the management node
+        with virtual_nodes.ssh_connect_nodes([host_node_class]) as connections:
+            self.__run_all_tests(connections)
 
     def remove(self):
         if not self.prepared:

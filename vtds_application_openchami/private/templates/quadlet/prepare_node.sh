@@ -129,6 +129,12 @@ for file in "${OPENCHAMI_FILES[@]}"; do
 done
 chown -R rocky: ~rocky/openchami-files
 
+# Copy the cluster testing tree (if any) to the 'rocky' user
+if [ -d ~/cluster_tests ]; then
+    cp -r ~/cluster_tests ~rocky/cluster_tests
+    chown -R rocky: ~rocky/cluster_tests
+fi
+
 # Run OpenCHAMI preparation script as 'rocky'
 cp /root/OpenCHAMI-Prepare.sh ~rocky/OpenCHAMI-Prepare.sh
 chown rocky ~rocky/OpenCHAMI-Prepare.sh

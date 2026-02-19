@@ -108,26 +108,26 @@ sudo systemctl start minio.service
 sudo systemctl stop registry.service
 sudo systemctl start registry.service
 
-# Install openchami from RPMs
-#
-# XXX - the VERSION here should be templated and configurable
-echo "Finding OpenCHAMI RPM"
+# Install openchami from GitHub repository
+echo "Installing required tools to build OpenCHAMI RPM"
+sudo dnf install -y make rpmdevtools
+echo "Cloning and builing OpenCHAMI Release Repo"
 cd /opt/workdir
-OWNER="openchami"
-REPO="release"
-OPENCHAMI_VERSION="latest"
 
-# Identify the version's release RPM
-API_URL="https://api.github.com/repos/${OWNER}/${REPO}/releases/${OPENCHAMI_VERSION}"
-release_json=$(curl -s "$API_URL")
-rpm_url=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".rpm")) | .browser_download_url' | head -n 1)
-rpm_name=$(echo "$release_json" | jq -r '.assets[] | select(.name | endswith(".rpm")) | .name' | head -n 1)
+# Make sure we are getting a clean copy...
+rm -rf openchami_release
 
-# Download the RPM
-echo "Downloading OpenCHAMI RPM"
-curl -L -o "$rpm_name" "$rpm_url"
+# Close the repo and switch to the correct version
+git clone "{{ openchami.url }}" openchami_release
+cd openchami_release
+git checkout "{{ openchami.version }}"
 
-# Install the RPM
+# Build the RPM and capture its file name
+make
+rpm="$(ls openchami-*.noarch.rpm)"
+
+# Install the RPM (shut everything down first if OpenCHAMI is already
+# running
 echo "Installing OpenCHAMI RPM"
 if systemctl status openchami.target; then
     sudo systemctl stop openchami.target
@@ -136,7 +136,7 @@ if systemctl status openchami.target; then
     sleep 5
     sudo podman volume rm postgres-data
 fi
-sudo rpm -Uvh --reinstall "$rpm_name"
+sudo rpm -Uvh --reinstall "$rpm"
 
 # Patch a bug in the coresmd-coredns container file...
 patch_coredns
