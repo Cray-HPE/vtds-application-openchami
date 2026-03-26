@@ -34,12 +34,7 @@ main() {
     echo "TEST_NAME: ${test_name}"
     echo "TEST_DESCRIPTION: ${test_description}"
     echo "TEST_RESULT: SUPPRESSED"
-    echo
-    echo "This test was suppressed due to failure or suppression of"
-    echo "the following tests on which it depends:"
-    for dep in "$@"; do
-        echo "    ${dep}"
-    done
+    echo "TEST_DEPENDENCIES_FAILED: $@"
 }
 
 main "$@"

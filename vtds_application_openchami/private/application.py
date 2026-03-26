@@ -1129,8 +1129,8 @@ class Application(ApplicationAPI):
 
         """
         test = self.tests[test_name]
-        cmd = "su - rocky ~rocky/%s %s '%s' %s" % (
-            path_join("cluster_tests", "suppressed_test.sh"),
+        cmd = "su - rocky %s %s '%s' %s" % (
+            path_join("~rocky", "cluster_tests", "suppressed_test.sh"),
             test_name,
             test['description'].replace('\n', ' '),
             " ".join(test['failed_deps'])

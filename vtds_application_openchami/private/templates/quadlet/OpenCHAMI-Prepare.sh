@@ -127,7 +127,7 @@ make
 rpm="$(ls openchami-*.noarch.rpm)"
 
 # Install the RPM (shut everything down first if OpenCHAMI is already
-# running
+# running)
 echo "Installing OpenCHAMI RPM"
 if systemctl status openchami.target; then
     sudo systemctl stop openchami.target
