@@ -123,6 +123,18 @@ application:
       # endpoints that need mappings to xnames.
       blade_classes:
         - host-blade
+  # The 'openchami' section provides information about the OpenCHAMI
+  # Release repository to be installed for testing or use by vTDS. It
+  # specifies a Git Repo URL at which the repository can be found and a
+  # 'version' which may be a Git branch, tag or digest (default is
+  # 'main').
+  #
+  # The default repo is the OpenCHAMI project 'release' repo. To test
+  # against a forked copy of that repo, simply put in the 'https' URL of
+  # your forked repo as the 'url' field in your configuration overlay.
+  openchami:
+    url: https://github.com/OpenCHAMI/release.git
+    version: main
   # The 'images' section contains 'builders', 'users' and 'groups' used
   # to set up managed node system images for use with OpenCHAMI.
   #
@@ -288,3 +300,111 @@ application:
         #       password (it is not recommended to publish that hash
         #       anywhere).
         password: null
+  # The 'testing' section specifies tests that can be run as part of the
+  # 'deploy' action. These will run after the main deployment completes
+  # and before completion of the overall deploy. They are intended as a
+  # way to incorporate either sanity testing or integration testing into
+  # the deployment.
+  #
+  # Testing can be (and is, by default) disabled as a block. Each test
+  # is indexed by the name of the test and contains a brief description,
+  # a timeout value, and a dictionary of files used by the test,
+  # including the test entrypoint. The test entrypoint is identified by
+  # having an 'entrypoint' flag set to 'true'. Each test can be
+  # individually enabled or disabled (enabled by default).
+  #
+  # Tests can be dependent of a list of other tests. The intention here
+  # is not to use supporting tests to establish initial conditions for a
+  # dependent test, but to try to ensure that functionality needed by a
+  # dependent test works correctly. This means that the dependencies are
+  # not hard dependencies, but soft dependencies. For example, in the
+  # simple case where test A depends on test B and test B has no
+  # dependencies, if test B is disabled test B is treated
+  # as though it ran and passed for the purpose of resolving the
+  # dependency and permitting test A to run. If, on the other hand, test
+  # B is enabled test B runs. If test B passes, then test A is permitted
+  # to run. If test B fails, then test A is not permitted to run citing
+  # the dependency on failed test B.
+  #
+  # Circular dependencies are detected at run time and resolved by
+  # running the circular dependency test once it is detected. For
+  # example, if there is a dependency graph that looks like:
+  #
+  #     Test A -> Test B -> Test C -> Test A
+  #
+  # Then Test A is run when it is encountered the second time in
+  # the graph, allowing (or preventing, if Test A fails) Test C and Test B
+  # to be run in that order afterward. Test A is only run once in this
+  # case.
+  #
+  # Dependencies are listed in the 'depends_on' field of a test
+  # desription. If that is empty or missing, the test has no
+  # dependencies. 
+  testing:
+    enabled: false
+    tests:
+      compute-node-ssh:
+        enabled: true
+        depends_on: []
+        description: |
+          A simple test that waits for the compute nodes configured
+          within the OpenCHAMI cluster to become available and then
+          verifies that each one can be reached from the 'rocky' user on
+          the management (head) node using SSH.
+        timeout: 600
+        # In a test, there can be as many files of as many types as are
+        # needed to support the test. Exactly one of those files will be
+        # the test entrypoint which is an executable file. It is
+        # reponsible for initiating the test when it is executed. It is
+        # designated by the 'entrypoint' flag being true.
+        files:
+          entrypoint:
+            path: "compute_node_ssh/entrypoint.sh"
+            mode: "755"
+            entrypoint: true
+      # The 'always-fail' test is provided to help in testing the
+      # behavior of test failure both simply and in the context of
+      # dependencies. As its name suggests, it simply fails (exits with
+      # a non-zero status). It is not intended for use in a production
+      # test run. It is disabled by default.
+      always-fail:
+        enabled: false
+        depends_on: []
+        description: |
+          A test that always fails for use in testing the testing mechanisms
+        timeout: 10
+        files:
+          entrypoint:
+            path: "always_fail/entrypoint.sh"
+            mode: "755"
+            entrypoint: true
+      # The 'always-pass' test is provided to help in testing the
+      # behavior of test success both simply and in the context of
+      # dependencies. As its name suggests, it simply passes (exits with
+      # a zero status). It is not intended for use in a production test
+      # run. It is disabled by default.
+      always-pass:
+        enabled: false
+        depends_on: []
+        description: |
+          A test that always passes for use in testing the testing mechanisms
+        timeout: 10
+        files:
+          entrypoint:
+            path: "always_pass/entrypoint.sh"
+            mode: "755"
+            entrypoint: true
+      # The 'always-time-out' test is provided to help in testing the
+      # behavior of test timeout mechanism. When run with its default
+      # timeout value, it will always time out. 
+      always-time-out:
+        enabled: false
+        depends_on: []
+        description: |
+          A test that always times out for testing the test timeout  mechanism
+        timeout: 2
+        files:
+          entrypoint:
+            path: "always_time_out/entrypoint.sh"
+            mode: "755"
+            entrypoint: true
