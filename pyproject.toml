@@ -96,7 +96,7 @@ exclude = ['vtds_application_openchami.tests*']
 build-backend = 'setuptools.build_meta'
 requires = [
     # setuptools - this comment reduces conflicts in dependabot PRs
-    'setuptools >= 66,< 81',
+    'setuptools >= 66,< 83',
     # setuptools scm - this comment reduces conflicts in dependabot PRs
     'setuptools_scm[toml] >= 7.1,< 9.3',
     # wheel - this comment reduces conflicts in dependabot PRs
