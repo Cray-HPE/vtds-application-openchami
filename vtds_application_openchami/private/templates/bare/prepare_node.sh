@@ -2,7 +2,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2025 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -50,9 +50,11 @@ if [ "${NODE_TYPE}" != "${HOST_NODE_CLASS}" ]; then
     exit 0
 fi
 
-# This is a management node, so set up OpenCHAMI and get it running and
-# initialized
-PACKAGES="libvirt qemu-kvm virt-install virt-manager dnsmasq podman buildah git vim emacs ansible-core openssl nfs-utils"
+# This is a management node and there is a good chance that we will
+# want to install OpenCHAMI on it, possibly from source. Make sure the
+# necessary packages are installed and that the 'rocky' user is set up
+# to be able to use 'sudo'.
+PACKAGES="libvirt qemu-kvm virt-install virt-manager dnsmasq podman buildah git vim emacs ansible-core openssl nfs-utils rpmdevtools"
 dnf -y check-update || true
 dnf -y install ${PACKAGES}
 dnf -y install epel-release

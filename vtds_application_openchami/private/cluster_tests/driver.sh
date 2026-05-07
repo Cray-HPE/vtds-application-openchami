@@ -20,7 +20,18 @@
 # OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-source ~/openchami-files/prep_setup.sh
+#! /usr/bin/bash
+
+# Common setup for the prepare node scripts
+set -o errexit -o errtrace
+function error_handler() {
+    local filename="${1}"; shift
+    local lineno="${1}"; shift
+    local exitval="${1}"; shift
+    echo "exiting on error [${exitval}] from ${filename}:${lineno}" >&2
+    exit ${exitval}
+}
+trap 'error_handler "${BASH_SOURCE[0]}" "${LINENO}" "${?}"' ERR
 
 # Get the directory the script resides in so we can find other test
 # files.

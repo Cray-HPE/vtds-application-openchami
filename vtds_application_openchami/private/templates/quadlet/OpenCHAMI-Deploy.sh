@@ -27,24 +27,40 @@
 # passwordless 'sudo' permissions. The base node preparation script
 # sets up the user 'rocky' with that before chaining here.
 
-# Common setup for the prepare node scripts
-set -o errexit -o errtrace
-function error_handler() {
-    local filename="${1}"; shift
-    local lineno="${1}"; shift
-    local exitval="${1}"; shift
-    echo "exiting on error [${exitval}] from ${filename}:${lineno}" >&2
-    exit ${exitval}
-}
-trap 'error_handler "${BASH_SOURCE[0]}" "${LINENO}" "${?}"' ERR
+# Set up error handling, the environment and some functions for
+# running the "prepare" scripts...
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
+source "${SCRIPT_DIR}/prep_setup.sh"
 
-function fail() {
-    local message="${*:-"failing for no specified reason"}"
-    echo "${BASH_SOURCE[1]}:${BASH_LINENO[0]}:[${FUNCNAME[1]}]: ${message}" >&2
-    return 1
-}
+cd "${VTDSDIR}"
 
-# Some useful shared variable
-ROCKYHOME=~rocky
-VTDSDIR="${ROCKY_HOME}/vtds"
-BINDIR="${VTDSDIR}/bin"
+# Make a python virtual environment for the deployment tool to live in
+VENV="${HOME}/venv"
+python3 -m venv "${VENV}"
+
+# Clone the deployment tool repo, switch to the correct version and
+# install it in the virtual environment
+cd "${VTDSDIR}"
+rm -rf deploy-openchami
+"${VENV}/bin/pip" uninstall -y deploy-openchami || true
+git clone "{{ deployment.deployment_tool.url }}" deploy-openchami
+cd deploy-openchami
+git checkout "{{ deployment.deployment_tool.version }}"
+"${VENV}/bin/pip" install .
+
+# Retrieve any deployment overlays specified in the configuration for
+# use with the deployment tool
+cd "${VTDSDIR}"
+DEPLOY_OVERLAYS=""
+{%- for overlay_url in deployment.deployment_tool.overlays %}
+OVERLAY_FILE="$(mktemp --suffix .yaml)"
+curl -s -o "{{ overlay_url }}" "${OVERLAY_FILE}"
+DEPLOY_OVERLAYS="${DEPLOY_OVERLAYS} ${OVERLAY_FILE}"
+{%- endfor %}
+
+# Now prepare the deployment and run it
+cd "${VTDSDIR}"
+echo "Preparing OpenCHAMI head node for deployment"
+sudo "${VENV}/bin/deploy_openchami" -p ${DEPLOY_OVERLAYS} cluster_overlay.yaml
+echo "Deploying OpenCHAMI on head node"
+sudo "${VENV}/bin/deploy_openchami" ${DEPLOY_OVERLAYS} cluster_overlay.yaml

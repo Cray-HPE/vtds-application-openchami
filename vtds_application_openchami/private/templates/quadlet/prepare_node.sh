@@ -26,28 +26,7 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
 source "${SCRIPT_DIR}/prep_setup.sh"
 
-OPENCHAMI_FILES=(
-    "nodes.yaml"
-    "s3cfg"
-    "rocky-base-9.yaml"
-    "compute-base-rocky9.yaml"
-    "compute-debug-rocky9.yaml"
-    "build-image.sh"
-    "boot-compute-debug.yaml"
-    "Corefile"
-    "containers.conf"
-    "s3-public-read-boot-images.json"
-    "s3-public-read-efi.json"
-    "prep_setup.sh"
-)
-# These files need to have their copyright comments stripped from them
-# because the comments break parsing.
-STRIP_COMMENT_FILES=(
-    "s3-public-read-boot-images.json"
-    "s3-public-read-efi.json"
-    "bmc_info.json"    # Do not put this in ~rocky/openchami-files
-)
-
+MANAGEMENT_NODE_CLASS="{{ host_node_class }}"
 
 usage() {
     echo $* >&2
@@ -66,15 +45,7 @@ if [ "${NODE_TYPE}" != "${MANAGEMENT_NODE_CLASS}" ]; then
     exit 0
 fi
 
-# Move the NAMESERVER for the management node over to the external
-# nameserver hosted by the host blade and add the cluster domain to
-# the domain search path. Since the nameserver here will be on the
-# management network but not local, specify the local IP on the
-# management network as the network parameter to switch_dns.
-switch_dns "${MANAGEMENT_EXT_NAMESERVER}" "${CLUSTER_DOMAIN}" "${MANAGEMENT_HEADNODE_IP}"
-
-# This is a management node, so set up OpenCHAMI and get it running and
-# initialized
+# This is a management node, so set up for OpenCHAMI deployment
 PACKAGES="\
         dnsmasq\
         podman\
@@ -90,6 +61,9 @@ dnf -y check-update || true
 dnf -y install ${PACKAGES}
 dnf -y install epel-release
 dnf -y install s3cmd
+# In case OpenCHAMI is already installed, we want to remove it so we
+# don't conflict with it
+dnf -y remove openchami || true
 if ! getent group rocky; then
     groupadd rocky
 fi
@@ -100,43 +74,28 @@ fi
 sed -i -e '/[[:space:]]*rocky/d' /etc/sudoers
 echo 'rocky ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
-# Set the interface name in coredhcp.yaml
-sed -i \
-    -e "s/::MGMT_NET_HEAD_IFNAME::/${MGMT_NET_HEAD_IFNAME}/g" \
-    coredhcp.yaml
-
-# Strip comments out of prepared data files as needed.
-for file in "${STRIP_COMMENT_FILES[@]}"; do
-    sed -i \
-        -e "/^[[:blank:]]*#/d" \
-        -e "s/[[:blank:]]*#.*$//" \
-        "${file}"
-done
-
-# Copy the BMC information into /etc/vtds and make sure it is not
-# publicly readable since it contains RedFish passwords for BMCs.
-chmod 600 bmc_info.json
-chown root:root bmc_info.json
-mkdir -p /etc/vtds
-cp bmc_info.json /etc/vtds/bmc_info.json
-chmod 600 /etc/vtds/bmc_info.json
-chown root:root /etc/vtds/bmc_info.json
-
-# Copy prepared data files to the 'rocky' user
-mkdir -p ~rocky/openchami-files
-for file in "${OPENCHAMI_FILES[@]}"; do
-    cp "${file}" ~rocky/openchami-files/"${file}"
-done
-chown -R rocky: ~rocky/openchami-files
-
 # Copy the cluster testing tree (if any) to the 'rocky' user
 if [ -d ~/cluster_tests ]; then
     cp -r ~/cluster_tests ~rocky/cluster_tests
     chown -R rocky: ~rocky/cluster_tests
 fi
 
+# Create directories that support 'rocky' running the deployment tool
+# and copy files into them.
+mkdir -p "${VTDSDIR}"
+chown -R rocky "${VTDSDIR}"
+chmod 755 "${VTDSDIR}"
+mkdir -p "${BINDIR}"
+chown -R rocky "${BINDIR}"
+chmod 755 "${BINDIR}"
+cp /root/prep_setup.sh "${BINDIR}/prep_setup.sh"
+chown rocky "${BINDIR}/prep_setup.sh"
+chmod 644 "${BINDIR}/prep_setup.sh"
+cp /root/OpenCHAMI-Deploy.sh "${BINDIR}/OpenCHAMI-Deploy.sh"
+chown rocky "${BINDIR}/OpenCHAMI-Deploy.sh"
+chmod 755 "${BINDIR}/OpenCHAMI-Deploy.sh"
+cp /root/cluster_overlay.yaml "${VTDSDIR}/cluster_overlay.yaml"
+chown rocky "${VTDSDIR}/cluster_overlay.yaml"
+
 # Run OpenCHAMI preparation script as 'rocky'
-cp /root/OpenCHAMI-Prepare.sh ~rocky/OpenCHAMI-Prepare.sh
-chown rocky ~rocky/OpenCHAMI-Prepare.sh
-chmod 755 ~rocky/OpenCHAMI-Prepare.sh
-su - rocky -c "~rocky/OpenCHAMI-Prepare.sh"
+su - rocky -c "${BINDIR}/OpenCHAMI-Deploy.sh"
