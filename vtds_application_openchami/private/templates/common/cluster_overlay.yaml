@@ -1,0 +1,125 @@
+# MIT License
+#
+# (C) Copyright 2025-2026 Hewlett Packard Enterprise Development LP
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included
+# in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+# OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+# ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+# OTHER DEALINGS IN THE SOFTWARE.
+# For now, vTDS deploys only cluster mode OpenCHAMI systems. If that
+# becomes configurable in the future and we want to be able to deploy
+# host mode clusters, template that here.
+
+deployment_mode: cluster
+bmcs:
+{%- for xname, bmc_info in bmcs.items() %}
+  {{ xname }}:
+    blade_class: {{ bmc_info.blade_class }}
+    blade_instance: "{{ bmc_info.blade_instance }}"
+    network:
+      redfish_username: {{ bmc_info.network.redfish_username }}
+      redfish_password: {{ bmc_info.network.redfish_password }}
+      mac: "{{ bmc_info.network.mac }}"
+      ipv4: "{{ bmc_info.network.ipv4 }}"
+{%- endfor %}
+hosting_config:
+  # For now the cluster is named for its head node. This should be
+  # separately configurable in vTDS, but it is not for now.
+  cluster_name: {{ hosting_config.management.net_head_host }}
+  # this is the network name not the interface name. It is used to
+  # create virtual networks in 'virsh' for 'host' mode operation.
+  cluster_net_name: not-needed-for-cluster-mode
+  # This is the name of the bridge that virsh would use to create
+  # a virtual network for host mode operation.
+  cluster_net_bridge_name: not-needed-for-cluster-mode
+  cluster_net_dhcp_start: "{{ hosting_config.management.cluster_net_dhcp_start }}"
+  cluster_net_dhcp_end: "{{ hosting_config.management.cluster_net_dhcp_end }}"
+  cluster_net_mask: "{{ hosting_config.management.cluster_net_mask }}"
+  net_head_dns_server: "{{ hosting_config.management.net_head_dns_server }}"
+  net_head_domain: {{ hosting_config.management.net_head_domain }}
+  net_head_hostname: {{ hosting_config.management.net_head_host }}
+  net_head_ip: "{{ hosting_config.management.net_head_ip }}"
+  # Extra Packages lists extra packages in addition to the ones
+  # strictly needed for OpenCHAMI deployment that the 'prep-host'
+  # operation should install on the host node. The 'pre' list is
+  # packages that are required before installing the main list. This is
+  # not about dependencies per-se but about installing packages that
+  # bring repos with them like 'epel-release'. The 'main' list is the
+  # list of packages to be installed after the 'pre' list has been
+  # installed.
+  #
+  # This config exists for the OpenCHAMI Installer. We are not yet
+  # taking advantage of it, so just set both lists as empty lists. If
+  # this is needed in the future, we will need config and code to
+  # populate it.
+  extra_packages:
+    pre: []
+    main: []
+nodes:
+{%- for node in nodes %}
+- name: {{ node.xname }}
+  bmc_name: {{ node.bmc_xname }}
+  cluster_net_interface: {{ node.cluster_net_interface }}
+  hostname: {{ node.hostname }}
+  nid: {{ node.nid }}
+  node_group: {{ node.node_group }}
+  interfaces:
+  {%- for interface in node.interfaces %}
+  - network_name: {{ interface.network_name }}
+    mac_addr: "{{ interface.mac_addr }}"
+    ip_addrs:
+    {%- for ip_addr in interface.ip_addrs %}
+    - name: {{ ip_addr.name }}
+      ip_addr: "{{ ip_addr.ip_addr }}"
+    {%- endfor %}
+  {%- endfor %}
+{%- endfor %}
+
+openchami_config:
+  # The 'release' section describes the OpenCHAMI release to be
+  # installed, which derives from the OpenCHAMI version and
+  # URL version provided by the vTDS configuration.
+  release:
+    url: "{{ openchami.url }}"
+    version: "{{ openchami.version }}"
+
+images:
+  # The 'build_order' list specifies the order in which images need to
+  # be built to handle dependencies in layered builds. All images that
+  # are not listed in the build order will be assumed to only have
+  # dependencies on those listed and will be built in an arbitrary
+  # order following completion of the specified ordered builds.
+  build_order:
+    {%- for builder_name in image_builders %}
+    - {{ builder_name }}
+    {%- endfor %}
+  # The 'deployment_targets' section associates images with managed node
+  # groups (see 'nodes' above). It is indexed by group and each element
+  # identifies the boot parameter file associated with the boot image
+  # image assigned to the specified group. By default there is one node
+  # group ('compute') and it boots the 'compute-base-rocky-9' image
+  # described in 'builders'.
+  deployment_targets:
+    compute: {{ active_image }}
+  # The 'builders' section is a bit different from other configuration
+  # because each element is used directly to generate a Jinja2
+  # template for an image builder and then that template is run
+  # through the standard templated file generation before it is used
+  # for deployment. That means that Jinja2 templating can be included
+  # in the configuration (see, for example, the 'publish_registry'
+  # fields of each of the builders) and it will be honored.
+  builders:
+    {{ image_builder_defs | to_yaml | indent(4) }}

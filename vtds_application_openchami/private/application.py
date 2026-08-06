@@ -28,6 +28,11 @@ from os.path import dirname
 from os.path import join as path_join
 import re
 from tempfile import NamedTemporaryFile
+from jinja2 import filters
+from yaml import (
+    dump as yaml_dump,
+    SafeDumper,
+)
 
 from passlib.hash import md5_crypt
 from passlib import pwd
@@ -46,6 +51,63 @@ from . import (
     test_file_source,
     test_file_dest,
 )
+
+
+# Set up a Jinja2 custom filter that translates a complex object to
+# YAML for use in templates that need to expand opaque objects. The
+# YAML translation will honor multiline strings and do a "safe" dump
+# without reference compression.
+
+# Create a custom representer for yaml SafeDumper to dump multiline strings
+# using the '|' notation and multiline string output properly indented
+def __representer_strings_multiline(dumper, data):
+    """String representer for yaml that dumps multiline strings using
+    pipe notation.
+
+    """
+    if '\n' in data:
+        return dumper.represent_scalar(
+            "tag:yaml.org,2002:str", data, style="|"
+        )
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+# Create a yaml SafeDumper class that uses '|' notation for multiline
+# strings
+class MultilineStringSafeDumper(SafeDumper):
+    """Safe Dumper Class for multiline strings so that when I register
+    my representer I don't corrupt the standard SafeDumper
+
+    """
+
+
+# Register the multiline string representer with the custom safe dumper
+MultilineStringSafeDumper.add_representer(
+    str, __representer_strings_multiline
+)
+
+
+def __to_yaml(obj):
+    """A custom Jinja2 filter that renders a complex object to YAML so
+    that we can put free form dictionary objects into a YAML file as
+    needed. It is primarily used to render image builders into the
+    cluster overlay verbatim. It will be registered as a filter by the
+    Application constructor and will then be available inside of
+    render_template_to_file() for expanding YAML in place.
+
+    """
+    return yaml_dump(
+        obj,
+        Dumper=MultilineStringSafeDumper,
+        default_flow_style=False,
+        sort_keys=False,
+        indent=2
+    )
+
+
+# Register the 'to_yaml' filter with Jinja2 now so we know it gets
+# into place before any template operations are called.
+filters.FILTERS['to_yaml'] = __to_yaml
 
 
 class Application(ApplicationAPI):
@@ -70,10 +132,6 @@ class Application(ApplicationAPI):
         self.prepared = False
         self.deploy_mode = None
         self.tpl_data = None
-        self.tpl_data_calls = {
-            'quadlet': self.__tpl_data_quadlet,
-            'bare': self.__tpl_data_bare,
-        }
         self.tests = (
             self.config.get('testing', {}).get('tests', {})
         ) if self.config.get('testing', {}).get('enabled', False) else {}
@@ -542,61 +600,6 @@ class Application(ApplicationAPI):
             for address in blade_addresses[(blade_class, instance)]
         ]
 
-    def __tpl_data(self):
-
-        """Template Data Collector
-
-        Return a dictionary for use in rendering files to be
-        shipped to the host node(s) for deployment based on the
-        Application layer configuration.
-
-        """
-        cluster = self.stack.get_cluster_api()
-        virtual_nodes = cluster.get_virtual_nodes()
-        virtual_networks = cluster.get_virtual_networks()
-        host = self.config.get('host', {})
-        host_network = host['network']
-        host_node_class = host['node_class']
-        addressing = virtual_nodes.node_class_addressing(
-            host_node_class, host_network
-        )
-        if addressing is None:
-            raise ContextualError(
-                "unable to find addressing for the host network '%s' "
-                "configured on the host node class '%s' - check your "
-                "application configuration and see that it matches your "
-                "cluster configuration." % (host_network, host_node_class)
-            )
-        macs = addressing.addresses('AF_PACKET')
-        discovery_networks = self.config.get('discovery_networks', {})
-        bmc_mappings = self.__bmc_mappings()
-        tpl_data = {
-            'host_node_class': host_node_class,
-            'discovery_networks': [
-                {
-                    'cidr': (
-                        virtual_networks.ipv4_cidr(network['network_name'])
-                        if network['network_name'] is not None else
-                        network['network_cidr']
-                    ),
-                    'external': network['network_name'] is not None,
-                    'name': name,
-                    'redfish_username': network['redfish_username'],
-                    'redfish_password': network['redfish_password'],
-                }
-                for name, network in discovery_networks.items()
-            ],
-            'hosts': [
-                {
-                    'host_instance': instance,
-                    'host_mac': macs[instance],
-                }
-                for instance in range(0, len(macs))
-            ],
-            'bmc_mappings': bmc_mappings,
-        }
-        return tpl_data
-
     def __bmc_xnames_by_node_class(self, node_classes):
         """Generate a node-class name to Virtual Blade XNAME list
         dictionary based on node-class host blade information.
@@ -703,7 +706,7 @@ class Application(ApplicationAPI):
             if str_list else ""
         )
 
-    def __tpl_data_quadlet_bmcs(self):
+    def __tpl_data_bmcs(self):
         """
         Template Data Collector
 
@@ -782,7 +785,7 @@ class Application(ApplicationAPI):
             if bmc_info['networks']
         }
 
-    def __tpl_data_quadlet_nodes(self):
+    def __tpl_data_nodes(self):
         """
         Template Data Collector
 
@@ -860,7 +863,7 @@ class Application(ApplicationAPI):
             for instance in range(0, virtual_nodes.node_count(node_class))
         ]
 
-    def __tpl_data_quadlet_managed_macs(self):
+    def __tpl_data_managed_macs(self):
         """
         Template Data Collector
 
@@ -912,7 +915,7 @@ class Application(ApplicationAPI):
         # blade that hosts management nodes, so just use instance 0 here.
         return virtual_blades.blade_ip(host_blade_class, 0, blade_interconnect)
 
-    def __tpl_data_quadlet_hosting_cfg(self):
+    def __tpl_data_hosting_cfg(self):
         """
         Template Data Collector
 
@@ -964,7 +967,7 @@ class Application(ApplicationAPI):
         }
 
     # pylint: disable=invalid-name
-    def __tpl_data_quadlet_image_builders(self):
+    def __tpl_data_image_builders(self):
         """
         Template Data Collector
 
@@ -989,7 +992,7 @@ class Application(ApplicationAPI):
             if builder not in build_order
         ]
 
-    def __tpl_data_quadlet_openchami(self):
+    def __tpl_data_openchami(self):
         """Template Data Collector
 
         Fill out the information about the OpenCHAMI Release
@@ -1005,55 +1008,83 @@ class Application(ApplicationAPI):
         )
         return openchami
 
-    def __tpl_data_quadlet(self):
-        """
-        Template Data Collector
+    def __tpl_data_deployment(self):
+        """Template Data Collector
 
-        Construct the template data dictionary used for building
-        templated deployment files for the Quadlet based mode of
-        deployment.
+        Fill out information about the deployment mode and deployment
+        tool for use in templates.
 
         """
-        tpl_data = self.__tpl_data()
-        tpl_data['nodes'] = self.__tpl_data_quadlet_nodes()
-        tpl_data['managed_macs'] = self.__tpl_data_quadlet_managed_macs()
-        tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
-        tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
-        tpl_data['image_builders'] = self.__tpl_data_quadlet_image_builders()
-        tpl_data['openchami'] = self.__tpl_data_quadlet_openchami()
+        deployment = self.config.get('deployment', {})
+        return deployment
+
+    def __tpl_data(self):
+
+        """Template Data Collector
+
+        Return a dictionary for use in rendering files to be
+        shipped to the host node(s) for deployment based on the
+        Application layer configuration.
+
+        """
+        cluster = self.stack.get_cluster_api()
+        virtual_nodes = cluster.get_virtual_nodes()
+        virtual_networks = cluster.get_virtual_networks()
+        host = self.config.get('host', {})
+        host_network = host['network']
+        host_node_class = host['node_class']
+        addressing = virtual_nodes.node_class_addressing(
+            host_node_class, host_network
+        )
+        if addressing is None:
+            raise ContextualError(
+                "unable to find addressing for the host network '%s' "
+                "configured on the host node class '%s' - check your "
+                "application configuration and see that it matches your "
+                "cluster configuration." % (host_network, host_node_class)
+            )
+        macs = addressing.addresses('AF_PACKET')
+        discovery_networks = self.config.get('discovery_networks', {})
+        bmc_mappings = self.__bmc_mappings()
+        tpl_data = {
+            'host_node_class': host_node_class,
+            'discovery_networks': [
+                {
+                    'cidr': (
+                        virtual_networks.ipv4_cidr(network['network_name'])
+                        if network['network_name'] is not None else
+                        network['network_cidr']
+                    ),
+                    'external': network['network_name'] is not None,
+                    'name': name,
+                    'redfish_username': network['redfish_username'],
+                    'redfish_password': network['redfish_password'],
+                }
+                for name, network in discovery_networks.items()
+            ],
+            'hosts': [
+                {
+                    'host_instance': instance,
+                    'host_mac': macs[instance],
+                }
+                for instance in range(0, len(macs))
+            ],
+            'bmc_mappings': bmc_mappings,
+        }
+        tpl_data['nodes'] = self.__tpl_data_nodes()
+        tpl_data['managed_macs'] = self.__tpl_data_managed_macs()
+        tpl_data['hosting_config'] = self.__tpl_data_hosting_cfg()
+        tpl_data['bmcs'] = self.__tpl_data_bmcs()
+        tpl_data['image_builders'] = self.__tpl_data_image_builders()
+        tpl_data['image_builder_defs'] = (
+            self.config.get('images', {}).get('builders', {})
+        )
+        tpl_data['openchami'] = self.__tpl_data_openchami()
+        tpl_data['deployment'] = self.__tpl_data_deployment()
         tpl_data['active_image'] = (
             self.config.get('images', {}).get('active', 'UNSPECIFIED')
         )
         return tpl_data
-
-    def __tpl_data_bare(self):
-        """Template Data Collector
-
-        Construct the template data dictionary used for building
-        templated deployment files for the Bare System mode of
-        deployment.
-
-        """
-        tpl_data = self.__tpl_data()
-        tpl_data['hosting_config'] = self.__tpl_data_quadlet_hosting_cfg()
-        tpl_data['bmcs'] = self.__tpl_data_quadlet_bmcs()
-        return tpl_data
-
-    def __choose_tpl_data(self):
-        """Pick the appropriate template data for the configured mode of
-        """
-        try:
-            return self.tpl_data_calls[self.deploy_mode]()
-        except KeyError as err:
-            raise ContextualError(
-                "unrecognized deployment mode '%s' configured - recognized "
-                "modes are: %s" % (
-                    self.deploy_mode,
-                    self.__formatted_str_list(
-                        list(self.tpl_data_calls.keys())
-                    )
-                )
-            )from err
 
     def __choose_deployment_files(self):
         """Based on the configured deployment mode, pick the correct
@@ -1461,7 +1492,7 @@ class Application(ApplicationAPI):
         self.deploy_mode = (
             self.config.get('deployment', {}).get('mode', 'quadlet')
         )
-        self.tpl_data = self.__choose_tpl_data()
+        self.tpl_data = self.__tpl_data()
         deployed_files = self.__choose_deployment_files()
 
         # Deploy the application to the cluster
